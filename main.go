@@ -159,6 +159,7 @@ func main() {
 
 	grabSvc := application.NewGrabService(initialGrabbers, queueRepo, txm)
 	queueSvc := application.NewQueueService(queueRepo, mediaRepo, partRepo, groupRepo)
+	historySvc := application.NewHistoryService(historyRepo, mediaRepo, partRepo, groupRepo)
 	importSvc := application.NewImportService(mediaRepo, partRepo, groupRepo, libraryRepo, txm, osFS, application.NewNamingService(), parser)
 	monitor := application.NewGrabMonitor(initialGrabbers, queueRepo, historyRepo)
 	monitor.OnCompleted = importSvc.Import
@@ -258,6 +259,7 @@ func main() {
 		GrabMissingSvc:   grabMissingSvc,
 		QueueRepo:        queueRepo,
 		QueueSvc:         queueSvc,
+		HistorySvc:       historySvc,
 		HistoryRepo:      historyRepo,
 		IndexerRepo:      indexerRepo,
 		IndexerReloader:  indexerSource,

@@ -1,45 +1,82 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef } from "react";
+import { Link } from "react-router-dom";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api/client";
-import type { History, Media } from "@/lib/api/types";
-import { MediaType } from "@/lib/api/types";
-import { Badge } from "@/components/ui/badge";
+import type { HistoryListItem } from "@/lib/api/types";
+import { MEDIA_TYPE_SLUG, MediaType } from "@/lib/api/types";
+import { CoverImg } from "@/components/ui/cover-img";
 import { Spinner } from "@/components/ui/spinner";
+import { MediaTypeBadge } from "@/components/media-type-badge";
+import { HistoryEventBadge } from "@/components/history-event-badge";
 
-function eventVariant(event: string): "default" | "secondary" | "success" | "destructive" | "info" {
-  switch (event) {
-    case "grabbed":
-      return "info";
-    case "imported":
-      return "success";
-    case "failed":
-      return "destructive";
-    default:
-      return "secondary";
-  }
+const PAGE_SIZE = 20;
+
+function posterAspect(type: MediaType): string {
+  if (type === MediaType.MusicAlbum) return "aspect-square";
+  return type === MediaType.Movie || type === MediaType.Series
+    ? "aspect-[2/3]"
+    : "aspect-[3/4]";
 }
 
 export function HistoryPage() {
   const { t } = useTranslation();
-  const historyQuery = useQuery({
-    queryKey: ["history"],
-    queryFn: () => api.get<History[]>("/api/history?page=1&limit=100"),
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const historyQuery = useInfiniteQuery({
+    queryKey: ["history", "infinite"],
+    queryFn: ({ pageParam }) =>
+      api.get<HistoryListItem[]>(
+        `/api/history?page=${pageParam}&limit=${PAGE_SIZE}`
+      ),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) =>
+      last.length < PAGE_SIZE ? undefined : pages.length + 1,
   });
 
-  const moviesQuery = useQuery({
-    queryKey: ["media", "by-type", MediaType.Movie],
-    queryFn: () => api.get<Media[]>(`/api/media?type=${MediaType.Movie}&limit=100`),
-  });
+  const items = useMemo(
+    () => (historyQuery.data?.pages ?? []).flat(),
+    [historyQuery.data]
+  );
 
-  const byId = new Map((moviesQuery.data ?? []).map((m) => [m.Id, m]));
+  useEffect(() => {
+    const target = sentinelRef.current;
+    if (!target) return;
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        if (historyQuery.hasNextPage && !historyQuery.isFetchingNextPage) {
+          void historyQuery.fetchNextPage();
+        }
+      },
+      { root: null, rootMargin: "120px", threshold: 0 }
+    );
+    obs.observe(target);
+    return () => obs.disconnect();
+  }, [
+    historyQuery.hasNextPage,
+    historyQuery.isFetchingNextPage,
+    historyQuery.fetchNextPage,
+    items.length,
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
       <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("history.title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("history.description")}
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("history.title")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("history.description")}
+            </p>
+          </div>
+          {!historyQuery.isLoading && items.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {t("history.count", { count: items.length })}
+            </p>
+          )}
+        </div>
       </header>
 
       {historyQuery.isLoading && (
@@ -53,44 +90,94 @@ export function HistoryPage() {
         </p>
       )}
 
-      {historyQuery.data && historyQuery.data.length === 0 && (
+      {!historyQuery.isLoading && items.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-24 text-center">
           <p className="text-sm text-muted-foreground">{t("empty.noActivity")}</p>
         </div>
       )}
 
-      {historyQuery.data && historyQuery.data.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t("history.media")}</th>
-                <th className="px-4 py-2 font-medium">{t("history.event")}</th>
-                <th className="px-4 py-2 font-medium">{t("history.releaseFile")}</th>
-                <th className="px-4 py-2 font-medium">{t("history.when")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {historyQuery.data.map((h) => (
-                <tr key={h.Id}>
-                  <td className="px-4 py-2.5 font-medium">
-                    {byId.get(h.MediaId)?.Name ?? `#${h.MediaId}`}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Badge variant={eventVariant(h.EventType)}>{t(`badges.${h.EventType}`)}</Badge>
-                  </td>
-                  <td className="max-w-md truncate px-4 py-2.5 font-mono text-xs">
-                    {h.ReleaseTitle || h.Data || t("common.dash")}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                    {new Date(h.CreatedAt).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {items.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-border bg-popover">
+          <ul className="divide-y divide-border">
+            {items.map((h) => (
+              <HistoryRow key={h.Id} item={h} />
+            ))}
+          </ul>
+          <div ref={sentinelRef} className="h-1" />
+          {historyQuery.isFetchingNextPage && (
+            <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+              <Spinner /> {t("search.loadingMore")}
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function HistoryRow({ item }: { item: HistoryListItem }) {
+  const { t } = useTranslation();
+  const media = item.Media;
+  const hasMedia = media?.Id > 0 && !!media.Name;
+  const type = media?.Type ?? MediaType.Movie;
+  const slug = MEDIA_TYPE_SLUG[type];
+  const title = hasMedia ? media.Name : t("wanted.mediaId", { id: item.MediaId });
+  const releaseOrData = item.ReleaseTitle || item.Data;
+
+  return (
+    <li className="flex items-start gap-3 px-4 py-3">
+      <div
+        className={`w-12 shrink-0 overflow-hidden rounded-md border border-border bg-muted ${posterAspect(type)}`}
+      >
+        <CoverImg
+          src={media?.Cover ?? ""}
+          alt={title}
+          className="h-full w-full object-cover"
+        />
+      </div>
+
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          {hasMedia && slug ? (
+            <Link
+              to={`/${slug}/${media.Id}`}
+              className="truncate font-medium text-primary hover:underline"
+              title={title}
+            >
+              {title}
+            </Link>
+          ) : (
+            <span className="truncate font-medium" title={title}>
+              {title}
+            </span>
+          )}
+          {hasMedia && media?.Type != null && <MediaTypeBadge type={media.Type} />}
+        </div>
+        {item.PartLabel && (
+          <p className="text-sm text-muted-foreground">{item.PartLabel}</p>
+        )}
+        <p
+          className="line-clamp-2 font-mono text-xs text-muted-foreground"
+          title={releaseOrData || undefined}
+        >
+          {releaseOrData || t("common.dash")}
+        </p>
+        {item.ReleaseTitle && item.Data && item.Data !== item.ReleaseTitle && (
+          <p
+            className="line-clamp-1 font-mono text-xs text-muted-foreground/80"
+            title={item.Data}
+          >
+            {item.Data}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {new Date(item.CreatedAt).toLocaleString()}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <HistoryEventBadge event={item.EventType} />
+      </div>
+    </li>
   );
 }

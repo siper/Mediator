@@ -150,6 +150,7 @@ export default {
   history: {
     title: "История",
     description: "Загрузки и импорт",
+    count: "{{count}} событий",
     media: "Медиа",
     event: "Событие",
     releaseFile: "Релиз / файл",

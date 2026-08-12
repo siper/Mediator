@@ -20,6 +20,12 @@ type History struct {
 	CreatedAt    time.Time
 }
 
+type HistoryListItem struct {
+	History
+	Media     Media
+	PartLabel *string
+}
+
 type HistoryRepository interface {
 	Add(h *History) error
 	GetByMediaId(mediaId ID) ([]History, error)

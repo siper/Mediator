@@ -108,6 +108,11 @@ export interface History {
   CreatedAt: string;
 }
 
+export interface HistoryListItem extends History {
+  Media: Media;
+  PartLabel?: string | null;
+}
+
 export type MediaRequestStatus = "pending" | "approved" | "rejected" | "canceled";
 
 export interface Setting {
