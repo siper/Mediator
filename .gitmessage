@@ -1,0 +1,12 @@
+Subject: <type>(<scope>): <short summary>
+
+Body: Explain what changed and why.
+
+Types: feat | fix | docs | style | refactor | test | chore
+
+Examples:
+feat(quality-profile): add PUT /api/quality-profiles/:id endpoint
+fix(import): handle nil path in import service
+docs: update AGENTS.md
+test: add tests for naming service
+chore: update dependencies

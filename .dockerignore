@@ -1,0 +1,11 @@
+**/.git
+**/node_modules
+web/node_modules
+web/dist
+staging
+covers
+data
+.env
+*.md
+Dockerfile
+docker-compose*.yml

@@ -1,0 +1,31 @@
+name: mediator
+
+services:
+  mediator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mediator-app
+    ports:
+      - "${MEDIATOR_HOST_PORT:-42800}:42800"
+    volumes:
+      - mediator-config:/config
+      - mediator-downloads:/downloads
+    environment:
+      MEDIATOR_TMDB_LANGUAGE: "${MEDIATOR_TMDB_LANGUAGE:-en-US}"
+      MEDIATOR_PORT: ":42800"
+      MEDIATOR_LOG_LEVEL: "${MEDIATOR_LOG_LEVEL:-INFO}"
+      MEDIATOR_AUTH_ACCESS_TTL: "${MEDIATOR_AUTH_ACCESS_TTL:-15m}"
+      MEDIATOR_AUTH_REFRESH_TTL: "${MEDIATOR_AUTH_REFRESH_TTL:-168h}"
+      MEDIATOR_AUTH_DISABLE_LOGIN: "${MEDIATOR_AUTH_DISABLE_LOGIN:-false}"
+      MEDIATOR_AUTH_DISABLE_REGISTRATION: "${MEDIATOR_AUTH_DISABLE_REGISTRATION:-false}"
+      MEDIATOR_AUTH_OIDC_ISSUER: "${MEDIATOR_AUTH_OIDC_ISSUER:-}"
+      MEDIATOR_AUTH_OIDC_CLIENT_ID: "${MEDIATOR_AUTH_OIDC_CLIENT_ID:-}"
+      MEDIATOR_AUTH_OIDC_CLIENT_SECRET: "${MEDIATOR_AUTH_OIDC_CLIENT_SECRET:-}"
+      MEDIATOR_AUTH_OIDC_ROLE_CLAIM: "${MEDIATOR_AUTH_OIDC_ROLE_CLAIM:-roles}"
+      MEDIATOR_AUTH_OIDC_ADMIN_ROLE: "${MEDIATOR_AUTH_OIDC_ADMIN_ROLE:-admin}"
+    restart: unless-stopped
+
+volumes:
+  mediator-config:
+  mediator-downloads:

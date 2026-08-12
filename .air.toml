@@ -1,0 +1,30 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main ."
+  entrypoint = ["./tmp/main"]
+  include_ext = ["go"]
+  exclude_dir = ["web", "tmp", "config", "media", "data", "bin", "covers", "staging", "node_modules"]
+  exclude_regex = ["_test.go"]
+  delay = 500
+  send_interrupt = true
+  kill_delay = "0s"
+  stop_on_error = true
+  log = "build-errors.log"
+
+  [build.windows]
+    cmd = "go build -o ./tmp/main.exe ."
+    entrypoint = ["./tmp/main.exe"]
+
+[log]
+  time = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true

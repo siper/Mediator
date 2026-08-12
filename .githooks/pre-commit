@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+# Determine changed files
+STAGED_GO=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.go$' || true)
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' || true)
+
+if [ -n "$STAGED_GO" ]; then
+  echo "Running go vet..."
+  go vet ./...
+  echo "Running go test..."
+  go test ./...
+fi
+
+if [ -n "$STAGED_TS" ]; then
+  echo "Running tsc --noEmit..."
+  (cd web && npx tsc --noEmit)
+fi
+
+echo "Pre-commit checks passed."

@@ -1,0 +1,13 @@
+{
+  "name": "mediator",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,green \"npm --prefix web run dev\" \"go run .\"",
+    "build": "npm --prefix web run build && go build -o bin/mediator.exe .",
+    "start": "go run ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
