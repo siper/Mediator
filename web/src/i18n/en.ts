@@ -150,6 +150,7 @@ export default {
   history: {
     title: "History",
     description: "Grabs and imports",
+    count: "{{count}} events",
     media: "Media",
     event: "Event",
     releaseFile: "Release / file",

@@ -22,6 +22,7 @@ type Deps struct {
 	GrabMissingSvc   *application.GrabMissingService
 	QueueRepo        domain.QueueRepository
 	QueueSvc         *application.QueueService
+	HistorySvc       *application.HistoryService
 	HistoryRepo      domain.HistoryRepository
 	IndexerRepo      domain.IndexerRepository
 	IndexerReloader  domain.IndexerReloader
@@ -56,7 +57,7 @@ func SetupRouter(d Deps) *gin.Engine {
 	partH := handlers.NewPartHandler(d.PartSvc, d.GroupRepo)
 	providerH := handlers.NewProviderHandler(d.ProviderSvc, d.SettingRepo)
 	releaseH := handlers.NewReleaseHandler(d.ReleaseSvc, d.GrabSvc, d.QualityRepo, d.MediaRepo)
-	queueH := handlers.NewQueueHandler(d.QueueSvc, d.HistoryRepo)
+	queueH := handlers.NewQueueHandler(d.QueueSvc, d.HistorySvc, d.HistoryRepo)
 	configH := handlers.NewConfigHandler(d.IndexerRepo, d.IndexerReloader, d.IndexerTester, d.ClientRepo, d.ClientReloader, d.ClientTester, d.LibraryRepo, d.QualityRepo, d.ProxyRepo, d.MetadataReloader, d.SettingRepo)
 	taskH := handlers.NewTaskHandler(d.SchedulerSvc, d.TaskRepo)
 	sourceH := handlers.NewSourceHandler(d.SourceRepo, d.MetadataReloader, d.SourceTester)

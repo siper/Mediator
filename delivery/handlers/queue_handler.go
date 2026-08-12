@@ -11,11 +11,20 @@ import (
 
 type QueueHandler struct {
 	queueSvc    *application.QueueService
+	historySvc  *application.HistoryService
 	historyRepo domain.HistoryRepository
 }
 
-func NewQueueHandler(queueSvc *application.QueueService, historyRepo domain.HistoryRepository) *QueueHandler {
-	return &QueueHandler{queueSvc: queueSvc, historyRepo: historyRepo}
+func NewQueueHandler(
+	queueSvc *application.QueueService,
+	historySvc *application.HistoryService,
+	historyRepo domain.HistoryRepository,
+) *QueueHandler {
+	return &QueueHandler{
+		queueSvc:    queueSvc,
+		historySvc:  historySvc,
+		historyRepo: historyRepo,
+	}
 }
 
 func (h *QueueHandler) Queue(c *gin.Context) {
@@ -59,7 +68,7 @@ func (h *QueueHandler) History(c *gin.Context) {
 	if limit < 1 {
 		limit = 50
 	}
-	items, err := h.historyRepo.List(page, limit)
+	items, err := h.historySvc.ListItems(page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
