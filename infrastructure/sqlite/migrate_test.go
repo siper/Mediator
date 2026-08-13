@@ -63,3 +63,17 @@ func TestNewDB_EnforcesForeignKeys(t *testing.T) {
 	require.NoError(t, db.QueryRow(`PRAGMA foreign_keys`).Scan(&fk))
 	assert.Equal(t, 1, fk)
 }
+
+func TestNewDB_EnablesWALAndBusyTimeout(t *testing.T) {
+	db, err := NewDB(t.TempDir() + "/wal.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	var journal string
+	require.NoError(t, db.QueryRow(`PRAGMA journal_mode`).Scan(&journal))
+	assert.Equal(t, "wal", journal)
+
+	var timeout int
+	require.NoError(t, db.QueryRow(`PRAGMA busy_timeout`).Scan(&timeout))
+	assert.Equal(t, 5000, timeout)
+}

@@ -99,34 +99,7 @@ func (s *ImportService) importSingle(ctx context.Context, item domain.QueueItem,
 	slog.Debug("import service: moving file", "media_id", item.MediaId, "job_id", item.JobID, "src", src, "dst", dst)
 
 	now := time.Now().UTC()
-	updated := *target
-	updated.Path = &dst
-	var moved []fsMove
-	err := s.uow.Run(ctx, func(repos *domain.Repos) error {
-		if err := repos.Part.Update(&updated); err != nil {
-			slog.Warn("import service: part update failed", "media_id", item.MediaId, "job_id", item.JobID, "part_id", target.Id, "err", err)
-			return err
-		}
-		if err := repos.History.Add(&domain.History{
-			MediaId:      item.MediaId,
-			PartId:       &target.Id,
-			EventType:    domain.HistoryImported,
-			ReleaseTitle: item.ReleaseTitle,
-			Data:         dst,
-			CreatedAt:    now,
-		}); err != nil {
-			return err
-		}
-		if err := s.fs.Move(src, dst); err != nil {
-			slog.Warn("import service: move failed", "media_id", item.MediaId, "job_id", item.JobID, "src", src, "dst", dst, "err", err)
-			return fmt.Errorf("import move failed: %w", err)
-		}
-		moved = append(moved, fsMove{src: src, dst: dst})
-		return nil
-	})
-	if err != nil {
-		s.rollbackMoves(item.MediaId, item.JobID, moved)
-		slog.Warn("import service: tx failed", "media_id", item.MediaId, "job_id", item.JobID, "err", err)
+	if err := s.commitImport(ctx, item, []stagedImport{{part: target, src: src, dst: dst}}, now); err != nil {
 		return err
 	}
 	slog.Info("import service: import completed", "media_id", item.MediaId, "job_id", item.JobID, "dst", dst)
@@ -145,12 +118,7 @@ func (s *ImportService) importSeries(ctx context.Context, item domain.QueueItem,
 	}
 	elibigle := eligibleSet(item.PartIds)
 
-	type staged struct {
-		part *domain.Part
-		src  string
-		dst  string
-	}
-	var stagedFiles []staged
+	var stagedFiles []stagedImport
 	consumed := make(map[domain.ID]bool)
 	for _, src := range status.OutputFiles {
 		fileParsed, _ := s.parser.Parse(filepath.Base(src), domain.MediaTypeSeries)
@@ -164,7 +132,7 @@ func (s *ImportService) importSeries(ctx context.Context, item domain.QueueItem,
 		dst := s.naming.BuildEpisode(libPath, folder, media.Name, *fileParsed.Season, fileParsed.Episodes[0], target.Name, seasonFormat, relParsed.Quality.Name, filepath.Ext(src))
 		slog.Debug("import service: staging episode move", "media_id", item.MediaId, "src", src, "dst", dst, "part_id", target.Id)
 		consumed[target.Id] = true
-		stagedFiles = append(stagedFiles, staged{part: target, src: src, dst: dst})
+		stagedFiles = append(stagedFiles, stagedImport{part: target, src: src, dst: dst})
 	}
 
 	if len(stagedFiles) == 0 {
@@ -173,38 +141,7 @@ func (s *ImportService) importSeries(ctx context.Context, item domain.QueueItem,
 	}
 
 	now := time.Now().UTC()
-	var moved []fsMove
-	err = s.uow.Run(ctx, func(repos *domain.Repos) error {
-		for _, f := range stagedFiles {
-			updated := *f.part
-			updated.Path = &f.dst
-			if err := repos.Part.Update(&updated); err != nil {
-				return err
-			}
-			pid := f.part.Id
-			if err := repos.History.Add(&domain.History{
-				MediaId:      item.MediaId,
-				PartId:       &pid,
-				EventType:    domain.HistoryImported,
-				ReleaseTitle: item.ReleaseTitle,
-				Data:         f.dst,
-				CreatedAt:    now,
-			}); err != nil {
-				return err
-			}
-		}
-		for _, f := range stagedFiles {
-			if err := s.fs.Move(f.src, f.dst); err != nil {
-				slog.Warn("import service: episode move failed", "media_id", item.MediaId, "src", f.src, "dst", f.dst, "err", err)
-				return fmt.Errorf("import move failed: %w", err)
-			}
-			moved = append(moved, fsMove{src: f.src, dst: f.dst})
-		}
-		return nil
-	})
-	if err != nil {
-		s.rollbackMoves(item.MediaId, item.JobID, moved)
-		slog.Warn("import service: tx failed", "media_id", item.MediaId, "job_id", item.JobID, "err", err)
+	if err := s.commitImport(ctx, item, stagedFiles, now); err != nil {
 		return err
 	}
 	slog.Info("import service: series import completed", "media_id", item.MediaId, "job_id", item.JobID, "episodes", len(stagedFiles))
@@ -226,12 +163,7 @@ func (s *ImportService) importAlbum(ctx context.Context, item domain.QueueItem, 
 	artist, album := albumArtistTitle(media)
 	relParsed, _ := s.parser.Parse(item.ReleaseTitle, domain.MediaTypeMusicAlbum)
 
-	type staged struct {
-		part *domain.Part
-		src  string
-		dst  string
-	}
-	var stagedFiles []staged
+	var stagedFiles []stagedImport
 	for i, src := range files {
 		target := assigned[i]
 		if target == nil {
@@ -248,7 +180,7 @@ func (s *ImportService) importAlbum(ctx context.Context, item domain.QueueItem, 
 		}
 		dst := s.naming.BuildAlbum(libPath, artist, album, trackNo, title, relParsed.Quality.Name, filepath.Ext(src))
 		slog.Debug("import service: staging album move", "media_id", item.MediaId, "src", src, "dst", dst, "part_id", target.Id)
-		stagedFiles = append(stagedFiles, staged{part: target, src: src, dst: dst})
+		stagedFiles = append(stagedFiles, stagedImport{part: target, src: src, dst: dst})
 	}
 
 	if len(stagedFiles) == 0 {
@@ -257,12 +189,41 @@ func (s *ImportService) importAlbum(ctx context.Context, item domain.QueueItem, 
 	}
 
 	now := time.Now().UTC()
+	if err := s.commitImport(ctx, item, stagedFiles, now); err != nil {
+		return err
+	}
+	slog.Info("import service: album import completed", "media_id", item.MediaId, "job_id", item.JobID, "tracks", len(stagedFiles))
+	return nil
+}
+
+type stagedImport struct {
+	part *domain.Part
+	src  string
+	dst  string
+}
+
+type fsMove struct {
+	src string
+	dst string
+}
+
+func (s *ImportService) commitImport(ctx context.Context, item domain.QueueItem, files []stagedImport, now time.Time) error {
 	var moved []fsMove
+	for _, f := range files {
+		if err := s.fs.Move(f.src, f.dst); err != nil {
+			slog.Warn("import service: move failed", "media_id", item.MediaId, "job_id", item.JobID, "src", f.src, "dst", f.dst, "err", err)
+			s.rollbackMoves(item.MediaId, item.JobID, moved)
+			return fmt.Errorf("import move failed: %w", err)
+		}
+		moved = append(moved, fsMove{src: f.src, dst: f.dst})
+	}
 	err := s.uow.Run(ctx, func(repos *domain.Repos) error {
-		for _, f := range stagedFiles {
+		for _, f := range files {
 			updated := *f.part
-			updated.Path = &f.dst
+			path := f.dst
+			updated.Path = &path
 			if err := repos.Part.Update(&updated); err != nil {
+				slog.Warn("import service: part update failed", "media_id", item.MediaId, "job_id", item.JobID, "part_id", f.part.Id, "err", err)
 				return err
 			}
 			pid := f.part.Id
@@ -277,13 +238,6 @@ func (s *ImportService) importAlbum(ctx context.Context, item domain.QueueItem, 
 				return err
 			}
 		}
-		for _, f := range stagedFiles {
-			if err := s.fs.Move(f.src, f.dst); err != nil {
-				slog.Warn("import service: album move failed", "media_id", item.MediaId, "src", f.src, "dst", f.dst, "err", err)
-				return fmt.Errorf("import move failed: %w", err)
-			}
-			moved = append(moved, fsMove{src: f.src, dst: f.dst})
-		}
 		return nil
 	})
 	if err != nil {
@@ -291,13 +245,7 @@ func (s *ImportService) importAlbum(ctx context.Context, item domain.QueueItem, 
 		slog.Warn("import service: tx failed", "media_id", item.MediaId, "job_id", item.JobID, "err", err)
 		return err
 	}
-	slog.Info("import service: album import completed", "media_id", item.MediaId, "job_id", item.JobID, "tracks", len(stagedFiles))
 	return nil
-}
-
-type fsMove struct {
-	src string
-	dst string
 }
 
 func (s *ImportService) rollbackMoves(mediaId domain.ID, jobID string, moves []fsMove) {
