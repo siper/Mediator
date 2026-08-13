@@ -371,7 +371,7 @@ func TestImportService_MoveFailure(t *testing.T) {
 		State: domain.GrabCompleted, OutputFiles: []string{"/stage/x.mkv"},
 	})
 	assert.Error(t, err)
-	assert.True(t, uow.ran)
+	assert.False(t, uow.ran)
 	assert.Empty(t, fs.moved)
 }
 
