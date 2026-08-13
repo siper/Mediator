@@ -1,5 +1,10 @@
 # AGENTS.md вЂ” Project Conventions
 
+## Language
+
+`README.md`, `AGENTS.md`, issues, and pull requests must be written in
+**English only**. Do not add Russian or any other language to these artifacts.
+
 ## Service Overview
 
 **media** is a self-hosted media manager in the style of the \*arr stack
@@ -412,6 +417,8 @@ Optional `compose.override.yml` (gitignored) for local mounts and debug logging.
 
 ## Git Conventions
 
+- **Language**: `README.md`, `AGENTS.md`, issues, and pull request titles/bodies
+  are English only
 - Conventional Commits (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`)
 - Pre-commit hook (`.githooks/pre-commit`): `go vet` / `go test` for Go changes,
   `npx tsc --noEmit` for TypeScript changes
