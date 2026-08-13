@@ -106,7 +106,7 @@ function AddBody({ result, onClose }: { result: SearchResult; onClose: () => voi
       queryClient.invalidateQueries({ queryKey: ["media"] });
       toast.success(t("messages.added", { name: m.Name }));
       onClose();
-      if (searchMissing && m.Type === MediaType.Series) {
+      if (searchMissing) {
         grabMissing.mutate(m.Id);
       }
       const base =
@@ -231,13 +231,13 @@ function AddBody({ result, onClose }: { result: SearchResult; onClose: () => voi
             value={folder}
             onChange={(e) => setFolder(e.target.value)}
           />
-          {!shouldRequest && result.MediaType === MediaType.Series && (
+          {!shouldRequest && (
             <label className="flex items-center gap-3 cursor-pointer">
               <Switch
                 checked={searchMissing}
                 onCheckedChange={setSearchMissing}
               />
-              <span className="text-sm">{t("addMedia.searchMissingEpisodes")}</span>
+              <span className="text-sm">{t(`addMedia.searchMissing.${typeKey}`)}</span>
             </label>
           )}
           {available.length === 0 && (
