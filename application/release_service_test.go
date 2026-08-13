@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -194,6 +195,60 @@ func TestReleaseService_Search_DropsWrongShowWithOriginal(t *testing.T) {
 	assert.Contains(t, scored[0].Release.Title, "Dr. Stone")
 }
 
+func TestReleaseService_Search_QueriesAllTitles(t *testing.T) {
+	var queries []string
+	ix := &queryCapturingIndexer{
+		name:    "a",
+		queries: &queries,
+		relsByQuery: map[string][]domain.Release{
+			"Доктор Стоун S01": {{Title: "Доктор Стоун S01 1080p WEB-DL-RUS", MagnetURI: "magnet:?xt=urn:btih:aaa", Seeders: 20}},
+			"Dr. Stone S01":    {{Title: "Dr. Stone S01 1080p WEB-DL-GRP", MagnetURI: "magnet:?xt=urn:btih:bbb", Seeders: 10}},
+		},
+	}
+	svc := newSvc(ix)
+
+	scored, err := svc.Search(context.Background(), "Dr. Stone", domain.MediaTypeSeries, nil, &SeriesTarget{Season: 1}, "Доктор Стоун", "Dr. Stone")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"Доктор Стоун S01", "Dr. Stone S01"}, queries)
+	require.Len(t, scored, 2)
+	titles := []string{scored[0].Release.Title, scored[1].Release.Title}
+	assert.Contains(t, titles, "Доктор Стоун S01 1080p WEB-DL-RUS")
+	assert.Contains(t, titles, "Dr. Stone S01 1080p WEB-DL-GRP")
+}
+
+func TestReleaseService_Search_DedupesDuplicateIdentity(t *testing.T) {
+	same := domain.Release{Title: "Movie.1080p.WEB-DL-GRP", MagnetURI: "magnet:?xt=urn:btih:abc", Seeders: 5}
+	better := domain.Release{Title: "Movie.1080p.WEB-DL-GRP", MagnetURI: "magnet:?xt=urn:btih:abc", Seeders: 40}
+	ix := &queryCapturingIndexer{
+		name: "a",
+		relsByQuery: map[string][]domain.Release{
+			"Movie WEB": {same},
+			"Movie":     {better},
+		},
+	}
+	svc := newSvc(ix)
+
+	scored, err := svc.Search(context.Background(), "Movie", domain.MediaTypeMovie, nil, nil, "Movie WEB", "Movie")
+	require.NoError(t, err)
+	require.Len(t, scored, 1)
+	assert.Equal(t, 40, scored[0].Release.Seeders)
+}
+
+func TestMediaMatchTitles(t *testing.T) {
+	assert.Equal(t, []string{"Интерстеллар", "Interstellar"}, MediaMatchTitles(domain.Media{
+		Name:         "Интерстеллар",
+		OriginalName: "Interstellar",
+	}))
+	assert.Equal(t, []string{"Interstellar"}, MediaMatchTitles(domain.Media{
+		Name:         "Interstellar",
+		OriginalName: "Interstellar",
+	}))
+	assert.Equal(t, []string{"Interstellar"}, MediaMatchTitles(domain.Media{
+		Name:         "Interstellar",
+		OriginalName: "interstellar",
+	}))
+}
+
 func TestReleaseService_Search_MovieCategories(t *testing.T) {
 	capturedCats := make([][]int, 0)
 	indexers := []domain.ReleaseIndexer{
@@ -233,6 +288,31 @@ func (c *catCapturingIndexer) Search(ctx context.Context, query string, cats []i
 }
 
 func (c *catCapturingIndexer) RSS(ctx context.Context, cats []int, since time.Time) ([]domain.Release, error) {
+	return nil, nil
+}
+
+type queryCapturingIndexer struct {
+	mu          sync.Mutex
+	name        string
+	queries     *[]string
+	relsByQuery map[string][]domain.Release
+}
+
+func (c *queryCapturingIndexer) Name() string { return c.name }
+
+func (c *queryCapturingIndexer) Search(ctx context.Context, query string, cats []int) ([]domain.Release, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.queries != nil {
+		*c.queries = append(*c.queries, query)
+	}
+	if c.relsByQuery != nil {
+		return c.relsByQuery[query], nil
+	}
+	return nil, nil
+}
+
+func (c *queryCapturingIndexer) RSS(ctx context.Context, cats []int, since time.Time) ([]domain.Release, error) {
 	return nil, nil
 }
 

@@ -202,7 +202,7 @@ func (s *RssService) bestMatch(parsed domain.ParsedRelease, title string, series
 	bestTier := tierDrop
 	bestScore := 0.0
 	for i := range series {
-		for _, name := range mediaMatchTitles(series[i].media) {
+		for _, name := range MediaMatchTitles(series[i].media) {
 			tier, score := matchScore(name, title)
 			if tier == tierDrop {
 				continue

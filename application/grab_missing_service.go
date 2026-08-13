@@ -147,13 +147,12 @@ func (s *GrabMissingService) grabSingleType(ctx context.Context, media domain.Me
 	if !ok {
 		return 0, nil
 	}
-	query := mediaReleaseQuery(media)
-	titles := mediaMatchTitles(media)
+	titles := MediaMatchTitles(media)
 	for _, p := range parts {
 		if s.grabSvc.HasActiveGrab(media.Id, p.Id) {
 			continue
 		}
-		scored, err := s.releaseSvc.Search(ctx, query, mt, profile, nil, titles...)
+		scored, err := s.releaseSvc.Search(ctx, media.Name, mt, profile, nil, titles...)
 		if err != nil {
 			slog.Warn("grab-missing: search failed", "id", media.Id, "type", mt, "err", err)
 			return 0, nil
@@ -194,7 +193,7 @@ func (s *GrabMissingService) grabAlbum(ctx context.Context, media domain.Media, 
 	for _, p := range parts {
 		partIds = append(partIds, p.Id)
 	}
-	scored, err := s.releaseSvc.Search(ctx, mediaReleaseQuery(media), domain.MediaTypeMusicAlbum, profile, nil, mediaMatchTitles(media)...)
+	scored, err := s.releaseSvc.Search(ctx, media.Name, domain.MediaTypeMusicAlbum, profile, nil, MediaMatchTitles(media)...)
 	if err != nil {
 		slog.Warn("grab-missing: album search failed", "id", media.Id, "err", err)
 		return 0, nil
@@ -242,8 +241,7 @@ func (s *GrabMissingService) grabSeries(ctx context.Context, media domain.Media,
 	}
 
 	seen := make(map[string]bool)
-	query := mediaReleaseQuery(media)
-	titles := mediaMatchTitles(media)
+	titles := MediaMatchTitles(media)
 	var grabbed int
 	for season, seasonParts := range bySeason {
 		anyActive := false
@@ -260,7 +258,7 @@ func (s *GrabMissingService) grabSeries(ctx context.Context, media domain.Media,
 			continue
 		}
 
-		scored, err := s.releaseSvc.Search(ctx, query, domain.MediaTypeSeries, profile, &SeriesTarget{Season: season}, titles...)
+		scored, err := s.releaseSvc.Search(ctx, media.Name, domain.MediaTypeSeries, profile, &SeriesTarget{Season: season}, titles...)
 		if err != nil {
 			slog.Warn("grab-missing: series search failed", "id", media.Id, "season", season, "err", err)
 			continue

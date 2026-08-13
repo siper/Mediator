@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"stersh.ru/mediator/domain"
@@ -29,39 +30,44 @@ func NewReleaseService(source domain.IndexerSource, parser *ReleaseParser) *Rele
 }
 
 func (s *ReleaseService) Search(ctx context.Context, query string, mediaType domain.MediaType, profile *domain.QualityProfile, target *SeriesTarget, matchTitles ...string) ([]ScoredRelease, error) {
-	type indexerResult struct {
+	type searchJob struct {
 		releases []domain.Release
 		err      error
 	}
 
 	indexers := s.source.Active()
 	cats := categoriesFor(mediaType)
-	titles := matchTitles
+	titles := uniqueSearchQueries(query, matchTitles...)
 	if len(titles) == 0 {
-		titles = []string{query}
+		return nil, nil
 	}
 
-	results := make([]indexerResult, len(indexers))
+	jobs := make([]searchJob, len(indexers)*len(titles))
 	var wg sync.WaitGroup
 	for i, ix := range indexers {
-		wg.Add(1)
-		go func(idx int, indexer domain.ReleaseIndexer) {
-			defer wg.Done()
-			rels, err := indexer.Search(ctx, buildQuery(query, target), cats)
-			results[idx] = indexerResult{releases: rels, err: err}
-		}(i, ix)
+		for j, title := range titles {
+			wg.Add(1)
+			go func(idx int, indexer domain.ReleaseIndexer, q string) {
+				defer wg.Done()
+				rels, err := indexer.Search(ctx, buildQuery(q, target), cats)
+				jobs[idx] = searchJob{releases: rels, err: err}
+			}(i*len(titles)+j, ix, title)
+		}
 	}
 	wg.Wait()
 
 	allowed := allowedSet(profile)
 	scored := make([]ScoredRelease, 0)
+	seen := make(map[string]int)
+	failed := 0
 	var errs []error
-	for _, res := range results {
-		if res.err != nil {
-			errs = append(errs, res.err)
+	for _, job := range jobs {
+		if job.err != nil {
+			errs = append(errs, job.err)
+			failed++
 			continue
 		}
-		for _, rel := range res.releases {
+		for _, rel := range job.releases {
 			parsed, err := s.parser.Parse(rel.Title, mediaType)
 			if err != nil {
 				continue
@@ -75,11 +81,20 @@ func (s *ReleaseService) Search(ctx context.Context, query string, mediaType dom
 			if target != nil && !matchesTarget(parsed, *target) {
 				continue
 			}
-			scored = append(scored, ScoredRelease{Release: rel, Parsed: parsed})
+			item := ScoredRelease{Release: rel, Parsed: parsed}
+			id := releaseIdentity(rel)
+			if prev, ok := seen[id]; ok {
+				if rel.Seeders > scored[prev].Release.Seeders {
+					scored[prev] = item
+				}
+				continue
+			}
+			seen[id] = len(scored)
+			scored = append(scored, item)
 		}
 	}
 
-	if len(scored) == 0 && len(errs) == len(indexers) && len(indexers) > 0 {
+	if len(scored) == 0 && failed == len(jobs) && len(jobs) > 0 {
 		return nil, fmt.Errorf("all indexers failed: %v", errs)
 	}
 
@@ -166,17 +181,28 @@ func categoriesFor(t domain.MediaType) []int {
 	}
 }
 
-func mediaReleaseQuery(m domain.Media) string {
-	if m.OriginalName != "" {
-		return m.OriginalName
-	}
-	return m.Name
+func MediaMatchTitles(m domain.Media) []string {
+	return uniqueSearchQueries(m.Name, m.OriginalName)
 }
 
-func mediaMatchTitles(m domain.Media) []string {
-	out := []string{m.Name}
-	if m.OriginalName != "" && m.OriginalName != m.Name {
-		out = append(out, m.OriginalName)
+func uniqueSearchQueries(query string, titles ...string) []string {
+	seen := make(map[string]struct{}, 1+len(titles))
+	out := make([]string, 0, 1+len(titles))
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		key := strings.ToLower(s)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, s)
+	}
+	add(query)
+	for _, title := range titles {
+		add(title)
 	}
 	return out
 }
