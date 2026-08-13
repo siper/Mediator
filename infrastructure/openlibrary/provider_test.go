@@ -13,8 +13,8 @@ import (
 func newTestProvider(t *testing.T, baseURL string) *OpenLibraryProvider {
 	t.Helper()
 	return &OpenLibraryProvider{
-		http:      http.DefaultClient,
-		baseURL:   baseURL,
+		http:       http.DefaultClient,
+		baseURL:    baseURL,
 		authorBase: baseURL,
 	}
 }
@@ -28,7 +28,8 @@ func TestSearch(t *testing.T) {
 				"key": "/works/OL27448W",
 				"title": "The Lord of the Rings",
 				"author_name": ["J.R.R. Tolkien"],
-				"cover_i": 14625765
+				"cover_i": 14625765,
+				"first_publish_year": 1954
 			}]
 		}`))
 	}))
@@ -57,6 +58,9 @@ func TestSearch(t *testing.T) {
 	}
 	if r.CoverURL != "https://covers.openlibrary.org/b/id/14625765-M.jpg" {
 		t.Errorf("CoverURL = %q", r.CoverURL)
+	}
+	if r.Year == nil || *r.Year != 1954 {
+		t.Errorf("Year = %v, want 1954", r.Year)
 	}
 }
 
@@ -336,7 +340,7 @@ func TestFetchLastModified_NonBookReturnsEmpty(t *testing.T) {
 
 func TestWorkKeyToOLID(t *testing.T) {
 	cases := []struct {
-		key string
+		key  string
 		want string
 	}{
 		{"/works/OL27448W", "OL27448W"},

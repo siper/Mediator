@@ -1,6 +1,10 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"strconv"
+	"strings"
+)
 
 type SearchResult struct {
 	ProviderName string
@@ -9,6 +13,26 @@ type SearchResult struct {
 	Overview     string
 	CoverURL     string
 	MediaType    MediaType
+	Year         *int
+}
+
+func YearFromDate(s string) *int {
+	s = strings.TrimSpace(s)
+	if len(s) < 4 {
+		return nil
+	}
+	y, err := strconv.Atoi(s[:4])
+	if err != nil {
+		return nil
+	}
+	return YearPtr(y)
+}
+
+func YearPtr(y int) *int {
+	if y < 1000 || y > 3000 {
+		return nil
+	}
+	return &y
 }
 
 type SearchPage struct {
