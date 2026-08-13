@@ -16,15 +16,11 @@ ready to close out:
    Write the PR title and body in English.
 
 ```bash
-gh pr create --repo siper/Mediator --base main --title "<conventional summary>" --body "$(cat <<'EOF'
-## Summary
+gh pr create --repo siper/Mediator --base main --title "<conventional summary>" --body "## Summary
 - <what changed and why>
 
 ## Test plan
-- [ ] <how to verify>
-
-EOF
-)"
+- [ ] <how to verify>"
 ```
 
 4. Return the PR URL to the user.

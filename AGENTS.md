@@ -441,15 +441,11 @@ For every new feature, bug fix, refactoring, or implementation task:
 
 ```bash
 git push -u github HEAD
-gh pr create --repo siper/Mediator --base main --title "<conventional summary>" --body "$(cat <<'EOF'
-## Summary
-<1-3 bullet points>
+gh pr create --repo siper/Mediator --base main --title "<conventional summary>" --body "## Summary
+- <1-3 bullet points>
 
 ## Test plan
-- [ ] <checklist>
-
-EOF
-)"
+- [ ] <checklist>"
 ```
 
    Title and body must be English. Do not merge unless the user asks.
