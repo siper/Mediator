@@ -32,17 +32,9 @@ func TestTMDBProvider_Search_ReturnsMoviesAndSeries(t *testing.T) {
 		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 		assert.NotContains(t, r.URL.RawQuery, "api_key")
 		json.NewEncoder(w).Encode(tmdbSearchResponse{
-			Results: []struct {
-				ID          int    `json:"id"`
-				MediaType   string `json:"media_type"`
-				Title       string `json:"title"`
-				Name        string `json:"name"`
-				Overview    string `json:"overview"`
-				PosterPath  string `json:"poster_path"`
-				ReleaseDate string `json:"release_date"`
-			}{
-				{ID: 1, MediaType: "movie", Title: "Test Movie", Overview: "overview", PosterPath: "/poster.jpg"},
-				{ID: 2, MediaType: "tv", Name: "Test Series", Overview: "overview", PosterPath: "/poster2.jpg"},
+			Results: []tmdbSearchItem{
+				{ID: 1, MediaType: "movie", Title: "Test Movie", Overview: "overview", PosterPath: "/poster.jpg", ReleaseDate: "1999-03-31"},
+				{ID: 2, MediaType: "tv", Name: "Test Series", Overview: "overview", PosterPath: "/poster2.jpg", FirstAirDate: "2008-01-20"},
 				{ID: 3, MediaType: "person", Title: "Actor", Overview: "overview"},
 			},
 		})
@@ -55,23 +47,19 @@ func TestTMDBProvider_Search_ReturnsMoviesAndSeries(t *testing.T) {
 	assert.Equal(t, domain.MediaTypeMovie, results[0].MediaType)
 	assert.Equal(t, "Test Movie", results[0].Title)
 	assert.Equal(t, "https://image.tmdb.org/t/p/w500/poster.jpg", results[0].CoverURL)
+	require.NotNil(t, results[0].Year)
+	assert.Equal(t, 1999, *results[0].Year)
 	assert.Equal(t, domain.MediaTypeSeries, results[1].MediaType)
 	assert.Equal(t, "Test Series", results[1].Title)
+	require.NotNil(t, results[1].Year)
+	assert.Equal(t, 2008, *results[1].Year)
 }
 
 func TestTMDBProvider_Search_FiltersByMediaType(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/search/multi", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(tmdbSearchResponse{
-			Results: []struct {
-				ID          int    `json:"id"`
-				MediaType   string `json:"media_type"`
-				Title       string `json:"title"`
-				Name        string `json:"name"`
-				Overview    string `json:"overview"`
-				PosterPath  string `json:"poster_path"`
-				ReleaseDate string `json:"release_date"`
-			}{
+			Results: []tmdbSearchItem{
 				{ID: 1, MediaType: "movie", Title: "Movie"},
 				{ID: 2, MediaType: "tv", Name: "Series"},
 			},
@@ -254,15 +242,7 @@ func TestTMDBProvider_Search_NilMediaTypeReturnsAll(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/search/multi", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(tmdbSearchResponse{
-			Results: []struct {
-				ID          int    `json:"id"`
-				MediaType   string `json:"media_type"`
-				Title       string `json:"title"`
-				Name        string `json:"name"`
-				Overview    string `json:"overview"`
-				PosterPath  string `json:"poster_path"`
-				ReleaseDate string `json:"release_date"`
-			}{
+			Results: []tmdbSearchItem{
 				{ID: 1, MediaType: "movie", Title: "Movie"},
 				{ID: 2, MediaType: "tv", Name: "Series"},
 			},

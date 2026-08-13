@@ -37,13 +37,20 @@ export function AddMediaDialog() {
   );
 }
 
+function suggestedFolder(result: SearchResult): string {
+  if (result.Year) {
+    return `${result.Title} (${result.Year})`;
+  }
+  return result.Title;
+}
+
 function AddBody({ result, onClose }: { result: SearchResult; onClose: () => void }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [libraryId, setLibraryId] = useState("");
   const [profileId, setProfileId] = useState("");
-  const [folder, setFolder] = useState("");
+  const [folder, setFolder] = useState(suggestedFolder(result));
   const [searchMissing, setSearchMissing] = useState(true);
 
   const { user } = useAuthStore();

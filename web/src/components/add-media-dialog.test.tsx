@@ -16,6 +16,7 @@ const { mockResult, mock, apiPost } = vi.hoisted(() => ({
     Overview: "A test album",
     CoverURL: "https://cover.example.com/test.jpg",
     MediaType: 3,
+    Year: null,
   } as SearchResult,
   mock: {
     user: null as { Role: string } | null,
@@ -88,6 +89,7 @@ function resetResult(overrides: Partial<SearchResult> = {}) {
   mockResult.Overview = "A test album";
   mockResult.CoverURL = "https://cover.example.com/test.jpg";
   mockResult.MediaType = 3;
+  mockResult.Year = null;
   Object.assign(mockResult, overrides);
 }
 
@@ -124,6 +126,18 @@ describe("AddMediaDialog", () => {
     const outerFlex = title.closest(".flex.overflow-hidden");
     expect(outerFlex).toBeInTheDocument();
     expect(outerFlex).toHaveClass("overflow-hidden");
+  });
+
+  it("pre-fills folder with title and year", () => {
+    resetResult({ Title: "The Matrix", Year: 1999 });
+    render(<I18nextTestProvider><AddMediaDialog /></I18nextTestProvider>);
+    expect(screen.getByPlaceholderText("Folder name (optional, defaults to title)")).toHaveValue("The Matrix (1999)");
+  });
+
+  it("pre-fills folder with title when year is missing", () => {
+    resetResult({ Title: "Test Book", Year: null });
+    render(<I18nextTestProvider><AddMediaDialog /></I18nextTestProvider>);
+    expect(screen.getByPlaceholderText("Folder name (optional, defaults to title)")).toHaveValue("Test Book");
   });
 
   it("shows Import button and posts to /api/providers/import for admin", async () => {
@@ -175,7 +189,7 @@ describe("AddMediaDialog", () => {
         type: mockResult.MediaType,
         library_id: 1,
         quality_profile_id: 1,
-        folder: "",
+        folder: albumTitle,
       }),
     );
     expect(apiPost).toHaveBeenCalledTimes(1);

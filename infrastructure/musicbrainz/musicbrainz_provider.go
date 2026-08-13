@@ -247,6 +247,7 @@ func dedupByReleaseGroup(releases []mbSearchRelease) []domain.SearchResult {
 			Overview:     "",
 			CoverURL:     makeCoverURL(r.ID),
 			MediaType:    domain.MediaTypeMusicAlbum,
+			Year:         domain.YearFromDate(r.Date),
 		}
 		if idx, ok := seen[key]; ok {
 			if cover && !out[idx].hasCover {
@@ -300,6 +301,7 @@ type mbSearchResponse struct {
 type mbSearchRelease struct {
 	ID           string                `json:"id"`
 	Title        string                `json:"title"`
+	Date         string                `json:"date"`
 	ArtistCredit []mbArtistCreditEntry `json:"artist-credit"`
 	CoverArt     *mbCoverArt           `json:"cover-art-archive"`
 	ReleaseGroup *mbReleaseGroup       `json:"release-group"`

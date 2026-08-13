@@ -27,15 +27,15 @@ var (
 )
 
 type OpenLibraryProvider struct {
-	http      *http.Client
-	baseURL   string
+	http       *http.Client
+	baseURL    string
 	authorBase string
 }
 
 func NewProvider(proxy *domain.Proxy) *OpenLibraryProvider {
 	return &OpenLibraryProvider{
-		http:      httpc.NewClient(httpTimeout, proxy),
-		baseURL:   baseURL,
+		http:       httpc.NewClient(httpTimeout, proxy),
+		baseURL:    baseURL,
 		authorBase: baseURL,
 	}
 }
@@ -62,7 +62,7 @@ func (p *OpenLibraryProvider) Search(query string, mediaType *domain.MediaType, 
 	q.Set("q", query)
 	q.Set("limit", strconv.Itoa(limit))
 	q.Set("page", strconv.Itoa(page))
-	q.Set("fields", "key,title,author_name,cover_i")
+	q.Set("fields", "key,title,author_name,cover_i,first_publish_year")
 	u := p.baseURL + "/search.json?" + q.Encode()
 	body, err := p.get(u)
 	if err != nil {
@@ -87,6 +87,7 @@ func (p *OpenLibraryProvider) Search(query string, mediaType *domain.MediaType, 
 			Title:        title,
 			CoverURL:     makeCoverURL(d.CoverID),
 			MediaType:    domain.MediaTypeBook,
+			Year:         domain.YearPtr(d.FirstPublishYear),
 		})
 	}
 	hasMore := page*limit < res.NumFound
@@ -245,23 +246,24 @@ func makeCoverURLFromArray(covers []int) string {
 }
 
 type olSearchResponse struct {
-	NumFound int            `json:"numFound"`
-	Docs     []olSearchDoc  `json:"docs"`
+	NumFound int           `json:"numFound"`
+	Docs     []olSearchDoc `json:"docs"`
 }
 
 type olSearchDoc struct {
-	Key        string   `json:"key"`
-	Title      string   `json:"title"`
-	AuthorName []string `json:"author_name"`
-	CoverID    int      `json:"cover_i"`
+	Key              string   `json:"key"`
+	Title            string   `json:"title"`
+	AuthorName       []string `json:"author_name"`
+	CoverID          int      `json:"cover_i"`
+	FirstPublishYear int      `json:"first_publish_year"`
 }
 
 type olWork struct {
-	Title        string        `json:"title"`
+	Title        string         `json:"title"`
 	Authors      []olWorkAuthor `json:"authors"`
-	Covers       []int         `json:"covers"`
-	Description  olTypedText   `json:"description"`
-	LastModified olTypedText   `json:"last_modified"`
+	Covers       []int          `json:"covers"`
+	Description  olTypedText    `json:"description"`
+	LastModified olTypedText    `json:"last_modified"`
 }
 
 type olWorkAuthor struct {

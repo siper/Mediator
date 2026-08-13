@@ -44,6 +44,7 @@ func TestMusicBrainzProvider_Search_ReturnsAlbums(t *testing.T) {
 				{
 					ID:    "release-uuid",
 					Title: "A Night at the Opera",
+					Date:  "1975-11-21",
 					ArtistCredit: []mbArtistCreditEntry{
 						{Name: "Queen", Artist: &mbArtistRef{ID: "artist-uuid", Name: "Queen"}},
 					},
@@ -63,6 +64,8 @@ func TestMusicBrainzProvider_Search_ReturnsAlbums(t *testing.T) {
 	assert.Equal(t, "Queen - A Night at the Opera", results[0].Title)
 	assert.Equal(t, "https://coverartarchive.org/release/release-uuid/front", results[0].CoverURL)
 	assert.Equal(t, domain.MediaTypeMusicAlbum, results[0].MediaType)
+	require.NotNil(t, results[0].Year)
+	assert.Equal(t, 1975, *results[0].Year)
 }
 
 func TestMusicBrainzProvider_Search_Paginates(t *testing.T) {
@@ -165,7 +168,7 @@ func TestMusicBrainzProvider_GetMedia_ReturnsReleaseWithTracks(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/release/", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(mbRelease{
-			ID:   "release-uuid",
+			ID:    "release-uuid",
 			Title: "A Night at the Opera",
 			ArtistCredit: []mbArtistCreditEntry{
 				{Name: "Queen", Artist: &mbArtistRef{Name: "Queen"}},
@@ -205,7 +208,7 @@ func TestMusicBrainzProvider_GetMedia_MultiDisc(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/release/", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(mbRelease{
-			ID:   "multi-uuid",
+			ID:    "multi-uuid",
 			Title: "Double Album",
 			ArtistCredit: []mbArtistCreditEntry{
 				{Artist: &mbArtistRef{Name: "Some Artist"}},
@@ -242,7 +245,7 @@ func TestMusicBrainzProvider_GetMedia_NoTracksCreatesNoParts(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/release/", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(mbRelease{
-			ID:   "no-tracks",
+			ID:    "no-tracks",
 			Title: "No Tracks Album",
 			ArtistCredit: []mbArtistCreditEntry{
 				{Artist: &mbArtistRef{Name: "Unknown"}},

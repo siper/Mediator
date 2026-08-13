@@ -153,6 +153,7 @@ export interface SearchResult {
   Overview: string;
   CoverURL: string;
   MediaType: MediaType;
+  Year: number | null;
 }
 
 export interface SearchPage {

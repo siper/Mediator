@@ -19,7 +19,7 @@ import (
 const Name = "tmdb"
 
 var (
-	baseURL   = "https://api.themoviedb.org/3"
+	baseURL     = "https://api.themoviedb.org/3"
 	httpTimeout = 30 * time.Second
 )
 
@@ -73,6 +73,10 @@ func (p *TMDBProvider) Search(query string, mediaType *domain.MediaType, page, l
 		if title == "" {
 			title = r.Name
 		}
+		date := r.ReleaseDate
+		if mt == domain.MediaTypeSeries {
+			date = r.FirstAirDate
+		}
 		result := domain.SearchResult{
 			ProviderName: Name,
 			ExternalID:   strconv.Itoa(r.ID),
@@ -80,6 +84,7 @@ func (p *TMDBProvider) Search(query string, mediaType *domain.MediaType, page, l
 			Overview:     r.Overview,
 			CoverURL:     p.buildCoverURL(r.PosterPath),
 			MediaType:    mt,
+			Year:         domain.YearFromDate(date),
 		}
 		results = append(results, result)
 	}
@@ -284,19 +289,22 @@ func tmdbMediaTypeToDomain(t string) domain.MediaType {
 
 var _ domain.TestableProvider = (*TMDBProvider)(nil)
 
+type tmdbSearchItem struct {
+	ID           int    `json:"id"`
+	MediaType    string `json:"media_type"`
+	Title        string `json:"title"`
+	Name         string `json:"name"`
+	Overview     string `json:"overview"`
+	PosterPath   string `json:"poster_path"`
+	ReleaseDate  string `json:"release_date"`
+	FirstAirDate string `json:"first_air_date"`
+}
+
 type tmdbSearchResponse struct {
-	Page         int `json:"page"`
-	TotalPages   int `json:"total_pages"`
-	TotalResults int `json:"total_results"`
-	Results      []struct {
-		ID          int    `json:"id"`
-		MediaType   string `json:"media_type"`
-		Title       string `json:"title"`
-		Name        string `json:"name"`
-		Overview    string `json:"overview"`
-		PosterPath  string `json:"poster_path"`
-		ReleaseDate string `json:"release_date"`
-	} `json:"results"`
+	Page         int              `json:"page"`
+	TotalPages   int              `json:"total_pages"`
+	TotalResults int              `json:"total_results"`
+	Results      []tmdbSearchItem `json:"results"`
 }
 
 type tmdbMovie struct {
