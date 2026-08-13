@@ -1,0 +1,34 @@
+---
+description: After finishing a worktree task, push the branch and open a GitHub PR with gh
+alwaysApply: true
+---
+
+# Finish worktree with GitHub PR
+
+Development happens on GitHub (`siper/Mediator`). Do not use Forgejo or `fj`.
+
+When a feature / fix / refactor / chore / docs task done in a git worktree is
+ready to close out:
+
+1. Ensure checks pass and changes are committed on the worktree branch.
+2. Push the branch to GitHub: `git push -u github HEAD`
+3. Create a pull request against `main` with GitHub CLI (`gh`).
+   Write the PR title and body in English.
+
+```bash
+gh pr create --repo siper/Mediator --base main --title "<conventional summary>" --body "$(cat <<'EOF'
+## Summary
+- <what changed and why>
+
+## Test plan
+- [ ] <how to verify>
+
+EOF
+)"
+```
+
+4. Return the PR URL to the user.
+5. Do not merge the PR unless the user explicitly asks.
+
+Use `--fill` only when commit messages already make a clear PR title/body.
+Never skip the PR step when finishing a worktree task.

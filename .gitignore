@@ -15,5 +15,4 @@ web/dist/
 .DS_Store
 web/tsconfig.tsbuildinfo
 .worktrees/
-.cursor/
 compose.override.yml
