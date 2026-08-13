@@ -1,0 +1,12 @@
+---
+description: README, AGENTS.md, issues, and PRs must be English only
+alwaysApply: true
+---
+
+# English-only docs
+
+`README.md`, `AGENTS.md`, GitHub issues, and pull request titles/bodies must be
+written in **English only**.
+
+- Do not add Russian or any other language to these artifacts.
+- Chat with the user may use Russian.

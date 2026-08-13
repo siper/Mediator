@@ -1,5 +1,10 @@
 # AGENTS.md вЂ” Project Conventions
 
+## Language
+
+`README.md`, `AGENTS.md`, GitHub issues, and pull requests must be written in
+**English only**. Do not add Russian or any other language to these artifacts.
+
 ## Service Overview
 
 **media** is a self-hosted media manager in the style of the \*arr stack
@@ -412,10 +417,38 @@ Optional `compose.override.yml` (gitignored) for local mounts and debug logging.
 
 ## Git Conventions
 
+- **Language**: `README.md`, `AGENTS.md`, issues, and pull request titles/bodies
+  are English only
+- **Remote**: `git@github.com:siper/Mediator.git` (remote name `github`).
+  Development happens on GitHub. Do not push to Forgejo or open PRs with `fj`.
 - Conventional Commits (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`)
 - Pre-commit hook (`.githooks/pre-commit`): `go vet` / `go test` for Go changes,
   `npx tsc --noEmit` for TypeScript changes
-- Feature work on dedicated branches / worktrees; merge to `main` via pull request
+- Feature work on dedicated branches / worktrees from `github/main`; merge to
+  `main` only through a GitHub pull request
+- **GitHub CLI**: use `gh` against `siper/Mediator`. Push with
+  `git push -u github HEAD`
+
+# Git workflow
+
+For every new feature, bug fix, refactoring, or implementation task:
+
+1. Create a dedicated branch and Git worktree from `github/main`.
+2. Use a branch name like `feature/<slug>`, `fix/<slug>`, `refactor/<slug>`,
+   `chore/<slug>`, or `docs/<slug>`.
+3. Never modify `main` directly.
+4. Push to GitHub and open a pull request:
+
+```bash
+git push -u github HEAD
+gh pr create --repo siper/Mediator --base main --title "<conventional summary>" --body "## Summary
+- <1-3 bullet points>
+
+## Test plan
+- [ ] <checklist>"
+```
+
+   Title and body must be English. Do not merge unless the user asks.
 
 ## Docker Image
 

@@ -1,3 +1,8 @@
+> [!WARNING]
+> **Test version.** Mediator is an early preview and is **not production-ready**.
+> The database schema, APIs, and behavior may change without notice.
+> Do not run this on data you cannot afford to lose.
+
 # Mediator
 
 Self-hosted media manager in the style of the *arr stack: catalog movies, series,
