@@ -30,7 +30,7 @@ function formatSize(bytes: number, units: string[]): string {
 
 function defaultReleaseQuery(media: Media): string {
   const original = (media.OriginalName ?? "").trim();
-  const name = media.Name ?? "";
+  const name = (media.Name ?? "").trim();
   if (media.Type === MediaType.Book) {
     const sep = " — ";
     const i = name.indexOf(sep);
@@ -39,8 +39,8 @@ function defaultReleaseQuery(media: Media): string {
       if (title) return title;
     }
   }
-  if (original) return original;
-  return name;
+  if (name) return name;
+  return original;
 }
 
 export function ReleasePickerDialog({
@@ -72,6 +72,7 @@ export function ReleasePickerDialog({
     queryFn: () =>
       api.post<ScoredRelease[]>("/api/releases/search", {
         query,
+        media_id: media.Id,
         type: media.Type,
         quality_profile_id: media.QualityProfileID ?? null,
         season,

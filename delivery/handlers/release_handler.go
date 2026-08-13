@@ -22,6 +22,7 @@ func NewReleaseHandler(releaseSvc *application.ReleaseService, grabSvc *applicat
 
 type searchRequest struct {
 	Query            string           `json:"query" binding:"required"`
+	MediaID          *uint64          `json:"media_id"`
 	Type             domain.MediaType `json:"type"`
 	QualityProfileID *uint64          `json:"quality_profile_id"`
 	Season           *int             `json:"season"`
@@ -50,7 +51,17 @@ func (h *ReleaseHandler) Search(c *gin.Context) {
 		target = &application.SeriesTarget{Season: *req.Season, Episode: req.Episode}
 	}
 
-	results, err := h.releaseSvc.Search(c.Request.Context(), req.Query, req.Type, profile, target)
+	var titles []string
+	if req.MediaID != nil {
+		media, err := h.mediaRepo.GetById(domain.ID(*req.MediaID))
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		titles = application.MediaMatchTitles(*media)
+	}
+
+	results, err := h.releaseSvc.Search(c.Request.Context(), req.Query, req.Type, profile, target, titles...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
