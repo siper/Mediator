@@ -77,3 +77,14 @@ func TestSetupRouter_AuthMe_WithoutCookie(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code, "/auth/me must return 401 without a cookie")
 }
+
+func TestSetupRouter_Health_WithoutAuth(t *testing.T) {
+	r, _ := setupAuthRouter(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/health", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "/health must return 200 without a cookie")
+	assert.JSONEq(t, `{"status":"ok"}`, w.Body.String())
+}

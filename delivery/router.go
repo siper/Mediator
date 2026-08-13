@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"io/fs"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"stersh.ru/mediator/application"
@@ -37,12 +38,12 @@ type Deps struct {
 	SchedulerSvc     *application.SchedulerService
 	SourceRepo       domain.SourceRepository
 	MetadataReloader domain.SourceReloader
-	SourceTester    domain.SourceTester
-	GroupRepo       domain.PartGroupRepository
-	RequestRepo     domain.MediaRequestRepository
-	RequestSvc      *application.MediaRequestService
-	RequestHandler  *handlers.RequestHandler
-	SettingRepo     domain.SettingRepository
+	SourceTester     domain.SourceTester
+	GroupRepo        domain.PartGroupRepository
+	RequestRepo      domain.MediaRequestRepository
+	RequestSvc       *application.MediaRequestService
+	RequestHandler   *handlers.RequestHandler
+	SettingRepo      domain.SettingRepository
 	WebFS            fs.FS
 
 	AuthMiddleware *AuthMiddleware
@@ -63,6 +64,10 @@ func SetupRouter(d Deps) *gin.Engine {
 	sourceH := handlers.NewSourceHandler(d.SourceRepo, d.MetadataReloader, d.SourceTester)
 
 	r.Static("/covers", d.CoverDir)
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 
 	if d.AuthHandler != nil {
 		authGrp := r.Group("/auth")

@@ -24,6 +24,12 @@ services:
       MEDIATOR_AUTH_OIDC_CLIENT_SECRET: "${MEDIATOR_AUTH_OIDC_CLIENT_SECRET:-}"
       MEDIATOR_AUTH_OIDC_ROLE_CLAIM: "${MEDIATOR_AUTH_OIDC_ROLE_CLAIM:-roles}"
       MEDIATOR_AUTH_OIDC_ADMIN_ROLE: "${MEDIATOR_AUTH_OIDC_ADMIN_ROLE:-admin}"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-t", "1", "-O", "/dev/null", "http://127.0.0.1:42800/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
 volumes:
