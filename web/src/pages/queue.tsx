@@ -1,14 +1,25 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { QueueListItem } from "@/lib/api/types";
 import { MEDIA_TYPE_SLUG, MediaType } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { CoverImg } from "@/components/ui/cover-img";
 import { Spinner } from "@/components/ui/spinner";
 import { MediaTypeBadge } from "@/components/media-type-badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const PAGE_SIZE = 20;
 
@@ -29,7 +40,9 @@ function posterAspect(type: MediaType): string {
 
 export function QueuePage() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const [removeId, setRemoveId] = useState<number | null>(null);
 
   const queueQuery = useInfiniteQuery({
     queryKey: ["queue", "infinite"],
@@ -47,6 +60,18 @@ export function QueuePage() {
     () => (queueQuery.data?.pages ?? []).flat(),
     [queueQuery.data]
   );
+
+  const remove = useMutation({
+    mutationFn: (id: number) => api.del(`/api/queue/${id}`),
+    onSuccess: () => {
+      setRemoveId(null);
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["parts/wanted"] });
+      toast.success(t("queue.removed"));
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   useEffect(() => {
     const target = sentinelRef.current;
@@ -109,7 +134,7 @@ export function QueuePage() {
         <div className="overflow-hidden rounded-lg border border-border bg-popover">
           <ul className="divide-y divide-border">
             {items.map((q) => (
-              <QueueRow key={q.Id} item={q} />
+              <QueueRow key={q.Id} item={q} onRemove={() => setRemoveId(q.Id)} />
             ))}
           </ul>
           <div ref={sentinelRef} className="h-1" />
@@ -120,11 +145,49 @@ export function QueuePage() {
           )}
         </div>
       )}
+
+      <Dialog
+        open={removeId != null}
+        onOpenChange={(open) => {
+          if (!open && !remove.isPending) setRemoveId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("queue.removeConfirmTitle")}</DialogTitle>
+            <DialogDescription>{t("queue.removeConfirmDescription")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRemoveId(null)}
+              disabled={remove.isPending}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (removeId != null) remove.mutate(removeId);
+              }}
+              disabled={remove.isPending}
+            >
+              {remove.isPending ? t("queue.removing") : t("queue.remove")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function QueueRow({ item }: { item: QueueListItem }) {
+function QueueRow({
+  item,
+  onRemove,
+}: {
+  item: QueueListItem;
+  onRemove: () => void;
+}) {
   const { t } = useTranslation();
   const media = item.Media;
   const hasMedia = media?.Id > 0 && !!media.Name;
@@ -178,23 +241,33 @@ function QueueRow({ item }: { item: QueueListItem }) {
         </p>
       </div>
 
-      <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <Badge variant={STATE_BADGE[item.State] ?? "secondary"}>
-          {t(`badges.${item.State}`)}
-        </Badge>
-        {running && (
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-16 overflow-hidden rounded bg-muted">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${Math.round(item.Progress * 100)}%` }}
-              />
+      <div className="flex shrink-0 items-start gap-1">
+        <div className="flex flex-col items-end gap-1.5">
+          <Badge variant={STATE_BADGE[item.State] ?? "secondary"}>
+            {t(`badges.${item.State}`)}
+          </Badge>
+          {running && (
+            <div className="flex items-center gap-2">
+              <div className="h-1.5 w-16 overflow-hidden rounded bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{ width: `${Math.round(item.Progress * 100)}%` }}
+                />
+              </div>
+              <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
+                {Math.round(item.Progress * 100)}%
+              </span>
             </div>
-            <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
-              {Math.round(item.Progress * 100)}%
-            </span>
-          </div>
-        )}
+          )}
+        </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onRemove}
+          title={t("queue.remove")}
+        >
+          <Trash2 className="size-4" />
+        </Button>
       </div>
     </li>
   );

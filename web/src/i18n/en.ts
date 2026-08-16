@@ -95,6 +95,12 @@ export default {
     count: "{{count}} in queue",
     grabber: "Grabber",
     added: "Added",
+    remove: "Remove",
+    removeConfirmTitle: "Remove from queue",
+    removeConfirmDescription:
+      "Remove this item from the queue. If a download is still in progress, it will be cancelled and its files deleted.",
+    removed: "Removed from queue",
+    removing: "Removing…",
   },
   wanted: {
     title: "Wanted",

@@ -58,7 +58,7 @@ func SetupRouter(d Deps) *gin.Engine {
 	partH := handlers.NewPartHandler(d.PartSvc, d.GroupRepo)
 	providerH := handlers.NewProviderHandler(d.ProviderSvc, d.SettingRepo)
 	releaseH := handlers.NewReleaseHandler(d.ReleaseSvc, d.GrabSvc, d.QualityRepo, d.MediaRepo)
-	queueH := handlers.NewQueueHandler(d.QueueSvc, d.HistorySvc, d.HistoryRepo)
+	queueH := handlers.NewQueueHandler(d.QueueSvc, d.GrabSvc, d.HistorySvc, d.HistoryRepo)
 	configH := handlers.NewConfigHandler(d.IndexerRepo, d.IndexerReloader, d.IndexerTester, d.ClientRepo, d.ClientReloader, d.ClientTester, d.LibraryRepo, d.QualityRepo, d.ProxyRepo, d.MetadataReloader, d.SettingRepo)
 	taskH := handlers.NewTaskHandler(d.SchedulerSvc, d.TaskRepo)
 	sourceH := handlers.NewSourceHandler(d.SourceRepo, d.MetadataReloader, d.SourceTester)
@@ -113,6 +113,7 @@ func SetupRouter(d Deps) *gin.Engine {
 		api.POST("/releases/grab", releaseH.Grab)
 
 		api.GET("/queue", queueH.Queue)
+		api.DELETE("/queue/:id", queueH.Remove)
 		api.GET("/history", queueH.History)
 
 		api.GET("/libraries", configH.ListLibraries)
