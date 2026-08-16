@@ -95,6 +95,12 @@ export default {
     count: "{{count}} в очереди",
     grabber: "Загрузчик",
     added: "Добавлено",
+    remove: "Удалить",
+    removeConfirmTitle: "Удалить из очереди",
+    removeConfirmDescription:
+      "Удалить этот элемент из очереди. Если загрузка ещё идёт, она будет отменена, а файлы в клиенте удалены.",
+    removed: "Удалено из очереди",
+    removing: "Удаление…",
   },
   wanted: {
     title: "Ждёт загрузки",

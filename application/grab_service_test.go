@@ -55,6 +55,7 @@ type fakeGrabber struct {
 	subErr      error
 	cancelErr   error
 	cancelCalls int
+	lastCancel  domain.GrabHandle
 	updates     map[string]int
 }
 
@@ -80,6 +81,7 @@ func (f *fakeGrabber) Status(ctx context.Context, h domain.GrabHandle) (domain.G
 
 func (f *fakeGrabber) Cancel(ctx context.Context, h domain.GrabHandle) error {
 	f.cancelCalls++
+	f.lastCancel = h
 	return f.cancelErr
 }
 
@@ -323,4 +325,101 @@ func TestGrabMonitor_ImportFailureRetries(t *testing.T) {
 
 	require.NoError(t, mon.Tick(context.Background()))
 	q.AssertExpectations(t)
+}
+
+func TestGrabService_Remove_ActiveCancelsAndRemoves(t *testing.T) {
+	q := new(mockQueueRepo)
+	h := new(mockHistoryRepo)
+	g := &fakeGrabber{name: "torrent"}
+
+	item := &domain.QueueItem{
+		Id: 7, MediaId: 3, GrabberName: "torrent", JobID: "job-7",
+		ReleaseTitle: "Movie.1080p", State: domain.GrabRunning,
+	}
+	q.On("GetById", domain.ID(7)).Return(item, nil)
+	h.On("Add", mock.MatchedBy(func(x *domain.History) bool {
+		return x.EventType == domain.HistoryFailed && x.Data == "canceled" && x.ReleaseTitle == "Movie.1080p" && x.MediaId == 3
+	})).Return(nil)
+	q.On("Remove", domain.ID(7)).Return(nil)
+
+	svc := NewGrabService([]domain.Grabber{g}, q, newGrabUoW(q, h))
+	require.NoError(t, svc.Remove(context.Background(), 7))
+
+	assert.Equal(t, 1, g.cancelCalls)
+	assert.Equal(t, "job-7", g.lastCancel.JobID)
+	assert.Equal(t, "torrent", g.lastCancel.GrabberName)
+	assert.Equal(t, "Movie.1080p", g.lastCancel.Name)
+	q.AssertExpectations(t)
+	h.AssertExpectations(t)
+}
+
+func TestGrabService_Remove_ActiveUsesDownloadID(t *testing.T) {
+	q := new(mockQueueRepo)
+	h := new(mockHistoryRepo)
+	g := &fakeGrabber{name: "torrent"}
+
+	item := &domain.QueueItem{
+		Id: 8, MediaId: 3, GrabberName: "torrent", JobID: "magnet-url",
+		DownloadID: "hash-abc", State: domain.GrabQueued,
+	}
+	q.On("GetById", domain.ID(8)).Return(item, nil)
+	h.On("Add", mock.Anything).Return(nil)
+	q.On("Remove", domain.ID(8)).Return(nil)
+
+	svc := NewGrabService([]domain.Grabber{g}, q, newGrabUoW(q, h))
+	require.NoError(t, svc.Remove(context.Background(), 8))
+
+	assert.Equal(t, "hash-abc", g.lastCancel.JobID)
+}
+
+func TestGrabService_Remove_TerminalSkipsCancel(t *testing.T) {
+	q := new(mockQueueRepo)
+	h := new(mockHistoryRepo)
+	g := &fakeGrabber{name: "torrent"}
+
+	item := &domain.QueueItem{
+		Id: 9, MediaId: 3, GrabberName: "torrent", JobID: "job-9",
+		State: domain.GrabCompleted,
+	}
+	q.On("GetById", domain.ID(9)).Return(item, nil)
+	q.On("Remove", domain.ID(9)).Return(nil)
+
+	svc := NewGrabService([]domain.Grabber{g}, q, newGrabUoW(q, h))
+	require.NoError(t, svc.Remove(context.Background(), 9))
+
+	assert.Equal(t, 0, g.cancelCalls)
+	h.AssertNotCalled(t, "Add", mock.Anything)
+	q.AssertExpectations(t)
+}
+
+func TestGrabService_Remove_NotFound(t *testing.T) {
+	q := new(mockQueueRepo)
+	h := new(mockHistoryRepo)
+	q.On("GetById", domain.ID(99)).Return(nil, domain.ErrQueueNotFound)
+
+	svc := NewGrabService(nil, q, newGrabUoW(q, h))
+	err := svc.Remove(context.Background(), 99)
+	assert.ErrorIs(t, err, domain.ErrQueueNotFound)
+	q.AssertNotCalled(t, "Remove", mock.Anything)
+}
+
+func TestGrabService_Remove_CancelErrorStillRemoves(t *testing.T) {
+	q := new(mockQueueRepo)
+	h := new(mockHistoryRepo)
+	g := &fakeGrabber{name: "torrent", cancelErr: assert.AnError}
+
+	item := &domain.QueueItem{
+		Id: 10, MediaId: 3, GrabberName: "torrent", JobID: "job-10",
+		State: domain.GrabRunning,
+	}
+	q.On("GetById", domain.ID(10)).Return(item, nil)
+	h.On("Add", mock.Anything).Return(nil)
+	q.On("Remove", domain.ID(10)).Return(nil)
+
+	svc := NewGrabService([]domain.Grabber{g}, q, newGrabUoW(q, h))
+	require.NoError(t, svc.Remove(context.Background(), 10))
+
+	assert.Equal(t, 1, g.cancelCalls)
+	q.AssertExpectations(t)
+	h.AssertExpectations(t)
 }

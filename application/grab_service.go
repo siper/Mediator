@@ -87,6 +87,57 @@ func (s *GrabService) Grab(ctx context.Context, t domain.GrabTarget) (*domain.Qu
 	return item, nil
 }
 
+func (s *GrabService) Remove(ctx context.Context, id domain.ID) error {
+	item, err := s.queueRepo.GetById(id)
+	if err != nil {
+		return err
+	}
+
+	if !item.State.Active() {
+		return s.queueRepo.Remove(item.Id)
+	}
+
+	if g := s.grabberByName(item.GrabberName); g != nil {
+		lookupID := item.DownloadID
+		if lookupID == "" {
+			lookupID = item.JobID
+		}
+		if err := g.Cancel(ctx, domain.GrabHandle{
+			GrabberName: item.GrabberName,
+			JobID:       lookupID,
+			Name:        item.ReleaseTitle,
+		}); err != nil {
+			slog.Warn("grab service: cancel failed", "queue_id", item.Id, "err", err)
+		}
+	} else {
+		slog.Warn("grab service: grabber not found", "queue_id", item.Id, "grabber", item.GrabberName)
+	}
+
+	return s.uow.Run(ctx, func(repos *domain.Repos) error {
+		if err := repos.History.Add(&domain.History{
+			MediaId:      item.MediaId,
+			EventType:    domain.HistoryFailed,
+			ReleaseTitle: item.ReleaseTitle,
+			Data:         "canceled",
+			CreatedAt:    time.Now().UTC(),
+		}); err != nil {
+			return err
+		}
+		return repos.Queue.Remove(item.Id)
+	})
+}
+
+func (s *GrabService) grabberByName(name string) domain.Grabber {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, g := range s.grabbers {
+		if g.Name() == name {
+			return g
+		}
+	}
+	return nil
+}
+
 func (s *GrabService) findGrabber(t domain.GrabTarget) (domain.Grabber, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

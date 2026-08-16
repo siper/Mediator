@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -11,17 +12,20 @@ import (
 
 type QueueHandler struct {
 	queueSvc    *application.QueueService
+	grabSvc     *application.GrabService
 	historySvc  *application.HistoryService
 	historyRepo domain.HistoryRepository
 }
 
 func NewQueueHandler(
 	queueSvc *application.QueueService,
+	grabSvc *application.GrabService,
 	historySvc *application.HistoryService,
 	historyRepo domain.HistoryRepository,
 ) *QueueHandler {
 	return &QueueHandler{
 		queueSvc:    queueSvc,
+		grabSvc:     grabSvc,
 		historySvc:  historySvc,
 		historyRepo: historyRepo,
 	}
@@ -42,6 +46,22 @@ func (h *QueueHandler) Queue(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, items)
+}
+
+func (h *QueueHandler) Remove(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	if err := h.grabSvc.Remove(c.Request.Context(), id); err != nil {
+		if errors.Is(err, domain.ErrQueueNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (h *QueueHandler) History(c *gin.Context) {
