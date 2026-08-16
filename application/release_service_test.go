@@ -209,7 +209,7 @@ func TestReleaseService_Search_QueriesAllTitles(t *testing.T) {
 
 	scored, err := svc.Search(context.Background(), "Dr. Stone", domain.MediaTypeSeries, nil, &SeriesTarget{Season: 1}, "Доктор Стоун", "Dr. Stone")
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"Доктор Стоун S01", "Dr. Stone S01"}, queries)
+	assert.ElementsMatch(t, []string{"Доктор Стоун", "Доктор Стоун S01", "Dr. Stone", "Dr. Stone S01"}, queries)
 	require.Len(t, scored, 2)
 	titles := []string{scored[0].Release.Title, scored[1].Release.Title}
 	assert.Contains(t, titles, "Доктор Стоун S01 1080p WEB-DL-RUS")
@@ -375,3 +375,87 @@ func TestMatchesTarget_MultiSeasonAndComplete(t *testing.T) {
 		})
 	}
 }
+
+func TestReleaseService_Search_PrefersCompleteSeriesPack(t *testing.T) {
+	indexers := []domain.ReleaseIndexer{
+		&fakeIndexer{name: "a", rels: []domain.Release{
+			{Title: "Show - S1E1-20 - 1080p WEB-DL-GRP", Seeders: 80},
+			{Title: "Show - S1-3E1-70 - 1080p WEB-DL-GRP", Seeders: 5},
+			{Title: "Show - S01E01 - 1080p WEB-DL-GRP", Seeders: 200},
+		}},
+	}
+	svc := newSvc(indexers...)
+
+	scored, err := svc.Search(context.Background(), "Show", domain.MediaTypeSeries, nil, &SeriesTarget{Season: 1})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(scored), 2)
+	assert.Contains(t, scored[0].Release.Title, "S1-3E1-70")
+	assert.Contains(t, scored[1].Release.Title, "S1E1-20")
+}
+
+func TestReleaseService_Search_FindsUnscopedCompletePack(t *testing.T) {
+	ix := &queryCapturingIndexer{
+		name: "a",
+		relsByQuery: map[string][]domain.Release{
+			"Show S01": {{Title: "Show - S1E1-20 - 1080p WEB-DL-GRP", Seeders: 80}},
+			"Show":     {{Title: "Show - S1-3E1-70 - 1080p WEB-DL-GRP", Seeders: 5}},
+		},
+	}
+	svc := newSvc(ix)
+
+	scored, err := svc.Search(context.Background(), "Show", domain.MediaTypeSeries, nil, &SeriesTarget{Season: 1})
+	require.NoError(t, err)
+	require.Len(t, scored, 2)
+	assert.Contains(t, scored[0].Release.Title, "S1-3E1-70")
+	assert.Contains(t, scored[1].Release.Title, "S1E1-20")
+}
+
+func TestPreferRelease_SeriesCoverage(t *testing.T) {
+	q1080 := domain.Quality{Kind: domain.QualityKindVideoSeries, Name: "1080p WEB-DL"}
+	q720 := domain.Quality{Kind: domain.QualityKindVideoSeries, Name: "720p WEB-DL"}
+
+	full := ScoredRelease{
+		Release: domain.Release{Title: "S1-3E1-70", Seeders: 5},
+		Parsed:  domain.ParsedRelease{Quality: q1080, Season: intVal(1), Seasons: []int{1, 2, 3}, Episodes: epRange(1, 70)},
+	}
+	season := ScoredRelease{
+		Release: domain.Release{Title: "S1E1-20", Seeders: 80},
+		Parsed:  domain.ParsedRelease{Quality: q1080, Season: intVal(1), Seasons: []int{1}, Episodes: epRange(1, 20)},
+	}
+	assert.True(t, preferRelease(full, season, true))
+	assert.False(t, preferRelease(season, full, true))
+
+	full720 := ScoredRelease{
+		Release: domain.Release{Title: "S1-3E1-70 720p", Seeders: 5},
+		Parsed:  domain.ParsedRelease{Quality: q720, Season: intVal(1), Seasons: []int{1, 2, 3}, Episodes: epRange(1, 70)},
+	}
+	assert.True(t, preferRelease(full720, season, true))
+
+	fullBetter := ScoredRelease{
+		Release: domain.Release{Title: "S1-3E1-70 1080p", Seeders: 1},
+		Parsed:  domain.ParsedRelease{Quality: q1080, Season: intVal(1), Seasons: []int{1, 2, 3}, Episodes: epRange(1, 70)},
+	}
+	fullWorseQ := ScoredRelease{
+		Release: domain.Release{Title: "S1-3E1-70 720p more seeders", Seeders: 50},
+		Parsed:  domain.ParsedRelease{Quality: q720, Season: intVal(1), Seasons: []int{1, 2, 3}, Episodes: epRange(1, 70)},
+	}
+	assert.True(t, preferRelease(fullBetter, fullWorseQ, true))
+
+	seasonPack := ScoredRelease{
+		Release: domain.Release{Title: "S01 complete", Seeders: 1},
+		Parsed:  domain.ParsedRelease{Quality: q1080, Season: intVal(1), Seasons: []int{1}},
+	}
+	partial := ScoredRelease{
+		Release: domain.Release{Title: "S01E01-10", Seeders: 40},
+		Parsed:  domain.ParsedRelease{Quality: q1080, Season: intVal(1), Seasons: []int{1}, Episodes: epRange(1, 10)},
+	}
+	assert.True(t, preferRelease(seasonPack, partial, true))
+
+	complete := ScoredRelease{
+		Release: domain.Release{Title: "Complete series", Seeders: 1},
+		Parsed:  domain.ParsedRelease{Quality: q1080, Complete: true},
+	}
+	assert.True(t, preferRelease(complete, full, true))
+}
+
+func intVal(v int) *int { return &v }

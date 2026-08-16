@@ -41,17 +41,18 @@ func (s *ReleaseService) Search(ctx context.Context, query string, mediaType dom
 	if len(titles) == 0 {
 		return nil, nil
 	}
+	queries := indexerQueries(titles, target)
 
-	jobs := make([]searchJob, len(indexers)*len(titles))
+	jobs := make([]searchJob, len(indexers)*len(queries))
 	var wg sync.WaitGroup
 	for i, ix := range indexers {
-		for j, title := range titles {
+		for j, q := range queries {
 			wg.Add(1)
 			go func(idx int, indexer domain.ReleaseIndexer, q string) {
 				defer wg.Done()
-				rels, err := indexer.Search(ctx, buildQuery(q, target), cats)
+				rels, err := indexer.Search(ctx, q, cats)
 				jobs[idx] = searchJob{releases: rels, err: err}
-			}(i*len(titles)+j, ix, title)
+			}(i*len(queries)+j, ix, q)
 		}
 	}
 	wg.Wait()
@@ -98,15 +99,34 @@ func (s *ReleaseService) Search(ctx context.Context, query string, mediaType dom
 		return nil, fmt.Errorf("all indexers failed: %v", errs)
 	}
 
+	series := mediaType == domain.MediaTypeSeries
 	sort.SliceStable(scored, func(i, j int) bool {
-		ri, rj := scored[i].Parsed.Quality.Rank(), scored[j].Parsed.Quality.Rank()
-		if ri != rj {
-			return ri > rj
-		}
-		return scored[i].Release.Seeders > scored[j].Release.Seeders
+		return preferRelease(scored[i], scored[j], series)
 	})
 
 	return scored, nil
+}
+
+func indexerQueries(titles []string, target *SeriesTarget) []string {
+	seen := make(map[string]struct{}, len(titles)*2)
+	out := make([]string, 0, len(titles)*2)
+	add := func(q string) {
+		q = strings.TrimSpace(q)
+		if q == "" {
+			return
+		}
+		key := strings.ToLower(q)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, q)
+	}
+	for _, title := range titles {
+		add(title)
+		add(buildQuery(title, target))
+	}
+	return out
 }
 
 func buildQuery(base string, target *SeriesTarget) string {
@@ -117,6 +137,43 @@ func buildQuery(base string, target *SeriesTarget) string {
 		return fmt.Sprintf("%s S%02d", base, target.Season)
 	}
 	return fmt.Sprintf("%s S%02dE%02d", base, target.Season, *target.Episode)
+}
+
+func preferRelease(a, b ScoredRelease, series bool) bool {
+	if series {
+		sa, ea := seriesCoverage(a.Parsed)
+		sb, eb := seriesCoverage(b.Parsed)
+		if sa != sb {
+			return sa > sb
+		}
+		if ea != eb {
+			return ea > eb
+		}
+	}
+	ra, rb := a.Parsed.Quality.Rank(), b.Parsed.Quality.Rank()
+	if ra != rb {
+		return ra > rb
+	}
+	return a.Release.Seeders > b.Release.Seeders
+}
+
+const (
+	completeSeriesSeasons  = 1 << 20
+	fullSeasonPackEpisodes = 1 << 20
+)
+
+func seriesCoverage(p domain.ParsedRelease) (seasons, episodes int) {
+	if p.Complete {
+		return completeSeriesSeasons, fullSeasonPackEpisodes
+	}
+	seasons = len(p.Seasons)
+	if seasons == 0 && p.Season != nil {
+		seasons = 1
+	}
+	if seasons > 0 && len(p.Episodes) == 0 {
+		return seasons, fullSeasonPackEpisodes
+	}
+	return seasons, len(p.Episodes)
 }
 
 func matchesTarget(parsed domain.ParsedRelease, target SeriesTarget) bool {
