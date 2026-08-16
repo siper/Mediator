@@ -378,4 +378,176 @@ func TestGrabMissingService_ProcessMedia_AuthorTodayFallsBackToTorrent(t *testin
 	queueRepo.AssertExpectations(t)
 }
 
+func TestGrabMissingService_ProcessMedia_PrefersCompleteSeriesPack(t *testing.T) {
+	mediaRepo := new(mockMediaRepo)
+	partRepo := new(mockPartRepo)
+	queueRepo := new(mockQueueRepo)
+	historyRepo := new(mockHistoryRepo)
+	qualityRepo := new(mockQualityRepo)
+	groupRepo := new(mockPartGroupRepo)
+
+	profileID := domain.ID(10)
+	mediaRepo.On("GetById", domain.ID(1)).Return(&domain.Media{
+		Id: 1, Name: "Amphibia", Type: domain.MediaTypeSeries, QualityProfileID: &profileID,
+	}, nil)
+	qualityRepo.On("GetById", profileID).Return(&domain.QualityProfile{
+		Id: 10, Type: domain.MediaTypeSeries,
+		Allowed: []domain.Quality{{Kind: domain.QualityKindVideoSeries, Name: "1080p WEB-DL"}},
+	}, nil)
+
+	s1, s2, s3 := domain.ID(100), domain.ID(200), domain.ID(300)
+	parts := []domain.Part{
+		{Id: 1, MediaId: 1, GroupId: &s1, GroupOrder: ptrInt(1), Monitored: true},
+		{Id: 2, MediaId: 1, GroupId: &s1, GroupOrder: ptrInt(2), Monitored: true},
+		{Id: 3, MediaId: 1, GroupId: &s2, GroupOrder: ptrInt(1), Monitored: true},
+		{Id: 4, MediaId: 1, GroupId: &s2, GroupOrder: ptrInt(2), Monitored: true},
+		{Id: 5, MediaId: 1, GroupId: &s3, GroupOrder: ptrInt(1), Monitored: true},
+		{Id: 6, MediaId: 1, GroupId: &s3, GroupOrder: ptrInt(2), Monitored: true},
+	}
+	partRepo.On("GetByMediaId", domain.ID(1)).Return(parts, nil)
+	groupRepo.On("GetByMediaID", domain.ID(1)).Return([]domain.PartGroup{
+		{Id: 100, Order: 1, MediaId: 1},
+		{Id: 200, Order: 2, MediaId: 1},
+		{Id: 300, Order: 3, MediaId: 1},
+	}, nil)
+	queueRepo.On("ListActive").Return([]domain.QueueItem{}, nil)
+
+	var grabbedTitles []string
+	var capturedPartIds []domain.ID
+	queueRepo.On("Add", mock.MatchedBy(func(q *domain.QueueItem) bool {
+		grabbedTitles = append(grabbedTitles, q.ReleaseTitle)
+		capturedPartIds = append([]domain.ID(nil), q.PartIds...)
+		return q.MediaId == 1
+	})).Return(nil)
+	historyRepo.On("Add", mock.Anything).Return(nil)
+
+	indexer := &fakeIndexer{name: "ix", rels: []domain.Release{
+		{Title: "Amphibia - S3E1-18 - 2021-2022 MVO (AniMaunt) WEBDL 1080p - RUSSIAN", MagnetURI: "magnet:?s3", Seeders: 80},
+		{Title: "Amphibia - S2E1-20 - 2020-2021 MVO (HDRezka Studio) WEBDL 1080p - RUSSIAN", MagnetURI: "magnet:?s2", Seeders: 70},
+		{Title: "Amphibia - S1-3E1-58 - 2019-2022 DUB (Nevafilm), Sub WEBDL 1080p - RUSSIAN", MagnetURI: "magnet:?all", Seeders: 5},
+	}}
+	releaseSvc := NewReleaseService(&fakeSource{indexers: []domain.ReleaseIndexer{indexer}}, NewReleaseParser())
+	grabber := &fakeGrabber{name: "torrent", support: true, handle: domain.GrabHandle{GrabberName: "torrent", JobID: "j1"}}
+	grabSvc := NewGrabService([]domain.Grabber{grabber}, queueRepo, newGrabUoW(queueRepo, historyRepo))
+	mediaSvc := NewMediaService(mediaRepo, nil, nil, nil)
+	partSvc := NewPartService(partRepo, mediaRepo, nil)
+	svc := NewGrabMissingService(grabSvc, partSvc, mediaSvc, releaseSvc, qualityRepo, groupRepo)
+
+	count, err := svc.ProcessMedia(context.Background(), domain.ID(1))
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "complete series pack should be a single grab")
+	require.Len(t, grabbedTitles, 1)
+	assert.Contains(t, grabbedTitles[0], "S1-3E1-58")
+	require.Len(t, capturedPartIds, 6)
+	assert.ElementsMatch(t, []domain.ID{1, 2, 3, 4, 5, 6}, capturedPartIds)
+}
+
+func TestGrabMissingService_ProcessMedia_SeasonPacksWhenNoComplete(t *testing.T) {
+	mediaRepo := new(mockMediaRepo)
+	partRepo := new(mockPartRepo)
+	queueRepo := new(mockQueueRepo)
+	historyRepo := new(mockHistoryRepo)
+	qualityRepo := new(mockQualityRepo)
+	groupRepo := new(mockPartGroupRepo)
+
+	profileID := domain.ID(10)
+	mediaRepo.On("GetById", domain.ID(1)).Return(&domain.Media{
+		Id: 1, Name: "Amphibia", Type: domain.MediaTypeSeries, QualityProfileID: &profileID,
+	}, nil)
+	qualityRepo.On("GetById", profileID).Return(&domain.QualityProfile{
+		Id: 10, Type: domain.MediaTypeSeries,
+		Allowed: []domain.Quality{{Kind: domain.QualityKindVideoSeries, Name: "1080p WEB-DL"}},
+	}, nil)
+
+	s1, s2, s3 := domain.ID(100), domain.ID(200), domain.ID(300)
+	parts := []domain.Part{
+		{Id: 1, MediaId: 1, GroupId: &s1, GroupOrder: ptrInt(1), Monitored: true},
+		{Id: 2, MediaId: 1, GroupId: &s2, GroupOrder: ptrInt(1), Monitored: true},
+		{Id: 3, MediaId: 1, GroupId: &s3, GroupOrder: ptrInt(1), Monitored: true},
+	}
+	partRepo.On("GetByMediaId", domain.ID(1)).Return(parts, nil)
+	groupRepo.On("GetByMediaID", domain.ID(1)).Return([]domain.PartGroup{
+		{Id: 100, Order: 1, MediaId: 1},
+		{Id: 200, Order: 2, MediaId: 1},
+		{Id: 300, Order: 3, MediaId: 1},
+	}, nil)
+	queueRepo.On("ListActive").Return([]domain.QueueItem{}, nil)
+	queueRepo.On("Add", mock.MatchedBy(func(q *domain.QueueItem) bool {
+		return q.MediaId == 1
+	})).Return(nil)
+	historyRepo.On("Add", mock.Anything).Return(nil)
+
+	indexer := &fakeIndexer{name: "ix", rels: []domain.Release{
+		{Title: "Amphibia - S3E1-18 - 2021-2022 MVO WEBDL 1080p - RUSSIAN", MagnetURI: "magnet:?s3", Seeders: 30},
+		{Title: "Amphibia - S2E1-20 - 2020-2021 MVO WEBDL 1080p - RUSSIAN", MagnetURI: "magnet:?s2", Seeders: 20},
+		{Title: "Amphibia - S1E1-20 - 2019-2020 MVO WEBDL 1080p - RUSSIAN", MagnetURI: "magnet:?s1", Seeders: 10},
+	}}
+	releaseSvc := NewReleaseService(&fakeSource{indexers: []domain.ReleaseIndexer{indexer}}, NewReleaseParser())
+	grabber := &fakeGrabber{name: "torrent", support: true, handle: domain.GrabHandle{GrabberName: "torrent", JobID: "j1"}}
+	grabSvc := NewGrabService([]domain.Grabber{grabber}, queueRepo, newGrabUoW(queueRepo, historyRepo))
+	mediaSvc := NewMediaService(mediaRepo, nil, nil, nil)
+	partSvc := NewPartService(partRepo, mediaRepo, nil)
+	svc := NewGrabMissingService(grabSvc, partSvc, mediaSvc, releaseSvc, qualityRepo, groupRepo)
+
+	count, err := svc.ProcessMedia(context.Background(), domain.ID(1))
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+	queueRepo.AssertNumberOfCalls(t, "Add", 3)
+}
+
+func TestGrabMissingService_ProcessMedia_SkipsWhenCompletePackActive(t *testing.T) {
+	mediaRepo := new(mockMediaRepo)
+	partRepo := new(mockPartRepo)
+	queueRepo := new(mockQueueRepo)
+	historyRepo := new(mockHistoryRepo)
+	qualityRepo := new(mockQualityRepo)
+	groupRepo := new(mockPartGroupRepo)
+
+	profileID := domain.ID(10)
+	mediaRepo.On("GetById", domain.ID(1)).Return(&domain.Media{
+		Id: 1, Name: "Amphibia", Type: domain.MediaTypeSeries, QualityProfileID: &profileID,
+	}, nil)
+	qualityRepo.On("GetById", profileID).Return(&domain.QualityProfile{Id: 10, Type: domain.MediaTypeSeries}, nil)
+
+	s1, s2 := domain.ID(100), domain.ID(200)
+	partRepo.On("GetByMediaId", domain.ID(1)).Return([]domain.Part{
+		{Id: 1, MediaId: 1, GroupId: &s1, GroupOrder: ptrInt(1), Monitored: true},
+		{Id: 2, MediaId: 1, GroupId: &s2, GroupOrder: ptrInt(1), Monitored: true},
+	}, nil)
+	groupRepo.On("GetByMediaID", domain.ID(1)).Return([]domain.PartGroup{
+		{Id: 100, Order: 1, MediaId: 1},
+		{Id: 200, Order: 2, MediaId: 1},
+	}, nil)
+	queueRepo.On("ListActive").Return([]domain.QueueItem{{
+		MediaId: 1, PartIds: []domain.ID{1, 2}, State: domain.GrabRunning,
+		ReleaseTitle: "Amphibia - S1-3E1-58 - 2019-2022 DUB WEBDL 1080p - RUSSIAN",
+	}}, nil)
+
+	releaseSvc := NewReleaseService(&fakeSource{}, NewReleaseParser())
+	grabSvc := NewGrabService(nil, queueRepo, newGrabUoW(queueRepo, historyRepo))
+	mediaSvc := NewMediaService(mediaRepo, nil, nil, nil)
+	partSvc := NewPartService(partRepo, mediaRepo, nil)
+	svc := NewGrabMissingService(grabSvc, partSvc, mediaSvc, releaseSvc, qualityRepo, groupRepo)
+
+	count, err := svc.ProcessMedia(context.Background(), domain.ID(1))
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+	queueRepo.AssertNotCalled(t, "Add")
+}
+
+func TestCoveredWantedParts_MultiSeason(t *testing.T) {
+	s1, s2, s3 := domain.ID(100), domain.ID(200), domain.ID(300)
+	seasonOf := map[domain.ID]int{s1: 1, s2: 2, s3: 3}
+	parts := []domain.Part{
+		{Id: 1, GroupId: &s1, GroupOrder: ptrInt(1)},
+		{Id: 2, GroupId: &s2, GroupOrder: ptrInt(1)},
+		{Id: 3, GroupId: &s3, GroupOrder: ptrInt(1)},
+	}
+	parsed, err := NewReleaseParser().Parse("Amphibia - S1-3E1-58 - WEBDL 1080p", domain.MediaTypeSeries)
+	require.NoError(t, err)
+	got := coveredWantedParts(parsed, parts, seasonOf)
+	require.Len(t, got, 3)
+	assert.Equal(t, []domain.ID{1, 2, 3}, []domain.ID{got[0].Id, got[1].Id, got[2].Id})
+}
+
 func ptrInt(v int) *int { return &v }

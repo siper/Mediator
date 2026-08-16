@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"log/slog"
+	"sort"
 
 	"stersh.ru/mediator/domain"
 )
@@ -228,6 +229,8 @@ func (s *GrabMissingService) grabSeries(ctx context.Context, media domain.Media,
 		seasonOf[g.Id] = g.Order
 	}
 
+	taken := make(map[domain.ID]bool)
+	var remaining []domain.Part
 	bySeason := make(map[int][]domain.Part)
 	for _, p := range parts {
 		if p.GroupId == nil {
@@ -237,45 +240,49 @@ func (s *GrabMissingService) grabSeries(ctx context.Context, media domain.Media,
 		if !ok {
 			continue
 		}
+		if s.grabSvc.HasActiveGrab(media.Id, p.Id) {
+			taken[p.Id] = true
+			continue
+		}
+		remaining = append(remaining, p)
 		bySeason[season] = append(bySeason[season], p)
+	}
+	if len(remaining) == 0 {
+		return 0, nil
+	}
+
+	candidates := s.collectSeriesReleases(ctx, media, profile, bySeason)
+	if len(candidates) == 0 {
+		slog.Debug("grab-missing: no releases for series", "id", media.Id)
+		return 0, nil
 	}
 
 	seen := make(map[string]bool)
-	titles := MediaMatchTitles(media)
 	var grabbed int
-	for season, seasonParts := range bySeason {
-		anyActive := false
-		wantedEps := make([]int, 0, len(seasonParts))
-		for _, p := range seasonParts {
-			if s.grabSvc.HasActiveGrab(media.Id, p.Id) {
-				anyActive = true
-			}
-			if p.GroupOrder != nil {
-				wantedEps = append(wantedEps, *p.GroupOrder)
+	for {
+		var leftover []domain.Part
+		for _, p := range remaining {
+			if !taken[p.Id] {
+				leftover = append(leftover, p)
 			}
 		}
-		if anyActive {
-			continue
+		if len(leftover) == 0 {
+			return grabbed, nil
 		}
-
-		scored, err := s.releaseSvc.Search(ctx, media.Name, domain.MediaTypeSeries, profile, &SeriesTarget{Season: season}, titles...)
-		if err != nil {
-			slog.Warn("grab-missing: series search failed", "id", media.Id, "season", season, "err", err)
-			continue
-		}
-		ranked := rankByCoverage(scored, wantedEps)
-		grabbedOne := false
+		ranked := rankByPartCoverage(candidates, leftover, seasonOf)
+		picked := false
 		for _, candidate := range ranked {
-			if candidate.Release.Seeders <= 0 {
-				continue
-			}
 			key := releaseIdentity(candidate.Release)
 			if seen[key] || s.grabSvc.HasActiveReleaseTitle(media.Id, candidate.Release.Title) {
 				continue
 			}
-			partIds := coveredPartIDs(seasonParts, candidate.Parsed)
-			if len(partIds) == 0 {
+			covered := coveredWantedParts(candidate.Parsed, leftover, seasonOf)
+			if len(covered) == 0 {
 				continue
+			}
+			partIds := make([]domain.ID, len(covered))
+			for i, p := range covered {
+				partIds[i] = p.Id
 			}
 			rel := candidate.Release
 			if _, err := s.grabSvc.Grab(ctx, domain.GrabTarget{
@@ -283,19 +290,65 @@ func (s *GrabMissingService) grabSeries(ctx context.Context, media domain.Media,
 				PartIds: partIds,
 				Release: &rel,
 			}); err != nil {
-				slog.Warn("grab-missing: series grab failed", "id", media.Id, "season", season, "err", err)
+				slog.Warn("grab-missing: series grab failed", "id", media.Id, "err", err)
 				continue
 			}
 			seen[key] = true
+			for _, id := range partIds {
+				taken[id] = true
+			}
 			grabbed++
-			grabbedOne = true
+			picked = true
 			break
 		}
-		if !grabbedOne {
-			slog.Debug("grab-missing: no releases for season", "id", media.Id, "season", season)
+		if !picked {
+			return grabbed, nil
 		}
 	}
-	return grabbed, nil
+}
+
+func (s *GrabMissingService) collectSeriesReleases(ctx context.Context, media domain.Media, profile *domain.QualityProfile, bySeason map[int][]domain.Part) []ScoredRelease {
+	titles := MediaMatchTitles(media)
+	merged := make([]ScoredRelease, 0)
+	seen := make(map[string]int)
+	add := func(batch []ScoredRelease) {
+		for _, item := range batch {
+			if item.Release.Seeders <= 0 {
+				continue
+			}
+			id := releaseIdentity(item.Release)
+			if prev, ok := seen[id]; ok {
+				if item.Release.Seeders > merged[prev].Release.Seeders {
+					merged[prev] = item
+				}
+				continue
+			}
+			seen[id] = len(merged)
+			merged = append(merged, item)
+		}
+	}
+
+	unscoped, err := s.releaseSvc.Search(ctx, media.Name, domain.MediaTypeSeries, profile, nil, titles...)
+	if err != nil {
+		slog.Warn("grab-missing: series search failed", "id", media.Id, "err", err)
+	} else {
+		add(unscoped)
+	}
+
+	seasons := make([]int, 0, len(bySeason))
+	for season := range bySeason {
+		seasons = append(seasons, season)
+	}
+	sort.Ints(seasons)
+	for _, season := range seasons {
+		scored, err := s.releaseSvc.Search(ctx, media.Name, domain.MediaTypeSeries, profile, &SeriesTarget{Season: season}, titles...)
+		if err != nil {
+			slog.Warn("grab-missing: series search failed", "id", media.Id, "season", season, "err", err)
+			continue
+		}
+		add(scored)
+	}
+	return merged
 }
 
 func (s *GrabMissingService) profileForMedia(media domain.Media) (*domain.QualityProfile, bool) {
@@ -331,22 +384,98 @@ func firstSeededRelease(scored []ScoredRelease) (domain.Release, bool) {
 }
 
 func coveredPartIDs(seasonParts []domain.Part, parsed domain.ParsedRelease) []domain.ID {
-	if len(parsed.Episodes) == 0 {
-		ids := make([]domain.ID, 0, len(seasonParts))
-		for _, p := range seasonParts {
-			ids = append(ids, p.Id)
-		}
-		return ids
-	}
-	wanted := make(map[int]bool, len(parsed.Episodes))
-	for _, ep := range parsed.Episodes {
-		wanted[ep] = true
-	}
-	ids := make([]domain.ID, 0, len(seasonParts))
-	for _, p := range seasonParts {
-		if p.GroupOrder != nil && wanted[*p.GroupOrder] {
-			ids = append(ids, p.Id)
-		}
+	parts := coveredWantedParts(parsed, seasonParts, nil)
+	ids := make([]domain.ID, len(parts))
+	for i, p := range parts {
+		ids[i] = p.Id
 	}
 	return ids
+}
+
+func coveredWantedParts(parsed domain.ParsedRelease, parts []domain.Part, seasonOf map[domain.ID]int) []domain.Part {
+	coveredSeasons := make(map[int]bool)
+	if parsed.Complete {
+		for _, p := range parts {
+			if p.GroupId == nil {
+				continue
+			}
+			if seasonOf != nil {
+				if season, ok := seasonOf[*p.GroupId]; ok {
+					coveredSeasons[season] = true
+				}
+				continue
+			}
+			coveredSeasons[0] = true
+		}
+	} else if len(parsed.Seasons) > 0 {
+		for _, season := range parsed.Seasons {
+			coveredSeasons[season] = true
+		}
+	} else if parsed.Season != nil {
+		coveredSeasons[*parsed.Season] = true
+	} else {
+		coveredSeasons[0] = true
+	}
+
+	var epSet map[int]bool
+	if len(parsed.Episodes) > 0 {
+		epSet = make(map[int]bool, len(parsed.Episodes))
+		for _, ep := range parsed.Episodes {
+			epSet[ep] = true
+		}
+	}
+
+	var out []domain.Part
+	for _, p := range parts {
+		if seasonOf != nil {
+			if p.GroupId == nil {
+				continue
+			}
+			season, ok := seasonOf[*p.GroupId]
+			if !ok || !coveredSeasons[season] {
+				continue
+			}
+		}
+		if epSet != nil {
+			if p.GroupOrder == nil || !epSet[*p.GroupOrder] {
+				continue
+			}
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func rankByPartCoverage(scored []ScoredRelease, remaining []domain.Part, seasonOf map[domain.ID]int) []ScoredRelease {
+	if len(scored) == 0 {
+		return scored
+	}
+	type entry struct {
+		idx      int
+		coverage int
+	}
+	entries := make([]entry, 0, len(scored))
+	for i, s := range scored {
+		cov := len(coveredWantedParts(s.Parsed, remaining, seasonOf))
+		if cov == 0 {
+			continue
+		}
+		entries = append(entries, entry{idx: i, coverage: cov})
+	}
+	sort.SliceStable(entries, func(a, b int) bool {
+		if entries[a].coverage != entries[b].coverage {
+			return entries[a].coverage > entries[b].coverage
+		}
+		ra := scored[entries[a].idx].Parsed.Quality.Rank()
+		rb := scored[entries[b].idx].Parsed.Quality.Rank()
+		if ra != rb {
+			return ra > rb
+		}
+		return scored[entries[a].idx].Release.Seeders > scored[entries[b].idx].Release.Seeders
+	})
+	out := make([]ScoredRelease, len(entries))
+	for i, e := range entries {
+		out[i] = scored[e.idx]
+	}
+	return out
 }

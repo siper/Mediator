@@ -140,9 +140,9 @@ func (s *RssService) buildSeriesInfo(media domain.Media) (rssSeries, bool) {
 	}
 
 	return rssSeries{
-		media:        media,
-		wanted:       wanted,
-		seasonOf:     seasonOf,
+		media:          media,
+		wanted:         wanted,
+		seasonOf:       seasonOf,
 		qualityAllowed: allowed,
 	}, true
 }
@@ -240,9 +240,9 @@ func (s *RssService) markSeen(hash string) bool {
 }
 
 type rssSeries struct {
-	media        domain.Media
-	wanted       map[int][]domain.Part
-	seasonOf     map[domain.ID]int
+	media          domain.Media
+	wanted         map[int][]domain.Part
+	seasonOf       map[domain.ID]int
 	qualityAllowed map[domain.Quality]bool
 }
 
@@ -250,43 +250,11 @@ func findWantedParts(parsed domain.ParsedRelease, si *rssSeries) []domain.Part {
 	if parsed.Season == nil {
 		return nil
 	}
-
-	covered := make(map[int]bool)
-	if len(parsed.Seasons) > 0 {
-		for _, s := range parsed.Seasons {
-			covered[s] = true
-		}
-	} else {
-		covered[*parsed.Season] = true
+	var parts []domain.Part
+	for _, ps := range si.wanted {
+		parts = append(parts, ps...)
 	}
-
-	if len(parsed.Episodes) > 0 {
-		epSet := make(map[int]bool, len(parsed.Episodes))
-		for _, ep := range parsed.Episodes {
-			epSet[ep] = true
-		}
-		var out []domain.Part
-		for season, parts := range si.wanted {
-			if !covered[season] {
-				continue
-			}
-			for _, p := range parts {
-				if p.GroupOrder != nil && epSet[*p.GroupOrder] {
-					out = append(out, p)
-				}
-			}
-		}
-		return out
-	}
-
-	var out []domain.Part
-	for season, parts := range si.wanted {
-		if !covered[season] {
-			continue
-		}
-		out = append(out, parts...)
-	}
-	return out
+	return coveredWantedParts(parsed, parts, si.seasonOf)
 }
 
 func fetchRss(ctx context.Context, indexers []domain.ReleaseIndexer, cats []int) []domain.Release {
