@@ -40,6 +40,24 @@ func TestMatchScore(t *testing.T) {
 			wantTier: tierExact,
 		},
 		{
+			name:     "short title matches release with articles omitted",
+			query:    "The Odyssey",
+			title:    "The.Odyssey.2026.1080p.BluRay.REMUX-GROUP",
+			wantTier: tierExact,
+		},
+		{
+			name:     "short title does not match longer unrelated title",
+			query:    "The Odyssey",
+			title:    "The Navigator A Mediaeval Odyssey 1988 VO Blu-Ray Remux 1080p - RUSSIAN",
+			wantDrop: true,
+		},
+		{
+			name:     "single token does not match longer unrelated title",
+			query:    "Odyssey",
+			title:    "The Navigator A Mediaeval Odyssey 1988 VO Blu-Ray Remux 1080p - RUSSIAN",
+			wantDrop: true,
+		},
+		{
 			name:      "fuzzy fallback when query has extra token",
 			query:     "новый человек паук",
 			title:     "Человек-паук",
