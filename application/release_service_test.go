@@ -195,6 +195,21 @@ func TestReleaseService_Search_DropsWrongShowWithOriginal(t *testing.T) {
 	assert.Contains(t, scored[0].Release.Title, "Dr. Stone")
 }
 
+func TestReleaseService_Search_DropsShortTitleSubsetFalsePositive(t *testing.T) {
+	indexers := []domain.ReleaseIndexer{
+		&fakeIndexer{name: "a", rels: []domain.Release{
+			{Title: "The Navigator A Mediaeval Odyssey 1988 VO Blu-Ray Remux 1080p - RUSSIAN", Seeders: 50},
+			{Title: "The.Odyssey.2026.1080p.BluRay.REMUX-GROUP", Seeders: 10},
+		}},
+	}
+	svc := newSvc(indexers...)
+
+	scored, err := svc.Search(context.Background(), "The Odyssey", domain.MediaTypeMovie, nil, nil, "Одиссей", "The Odyssey")
+	require.NoError(t, err)
+	require.Len(t, scored, 1)
+	assert.Contains(t, scored[0].Release.Title, "The.Odyssey.2026")
+}
+
 func TestReleaseService_Search_QueriesAllTitles(t *testing.T) {
 	var queries []string
 	ix := &queryCapturingIndexer{
