@@ -1,6 +1,9 @@
 package sqlite
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,4 +79,26 @@ func TestNewDB_EnablesWALAndBusyTimeout(t *testing.T) {
 	var timeout int
 	require.NoError(t, db.QueryRow(`PRAGMA busy_timeout`).Scan(&timeout))
 	assert.Equal(t, 5000, timeout)
+}
+
+func TestNewDB_RejectsReadOnlyFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix file modes")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ro.db")
+	db, err := NewDB(path)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	require.NoError(t, os.Chmod(path, 0o444))
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() {
+		_ = os.Chmod(dir, 0o755)
+		_ = os.Chmod(path, 0o644)
+	})
+
+	_, err = NewDB(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not writable")
 }

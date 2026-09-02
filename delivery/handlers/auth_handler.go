@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -217,13 +218,15 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 
 	pair, err := h.svc.LoginOIDC(c.Request.Context(), state, code, oidcRedirectURI(c))
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		slog.Error("oidc login failed", "path", c.Request.URL.Path, "err", err)
+		c.Redirect(http.StatusFound, "/login?error=login_failed")
 		return
 	}
 
 	u, err := h.getUserFromToken(pair.AccessToken)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		slog.Error("oidc token lookup failed", "path", c.Request.URL.Path, "err", err)
+		c.Redirect(http.StatusFound, "/login?error=login_failed")
 		return
 	}
 

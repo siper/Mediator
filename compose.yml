@@ -12,6 +12,8 @@ services:
       - mediator-config:/config
       - mediator-downloads:/downloads
     environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
       MEDIATOR_TMDB_LANGUAGE: "${MEDIATOR_TMDB_LANGUAGE:-en-US}"
       MEDIATOR_PORT: ":42800"
       MEDIATOR_LOG_LEVEL: "${MEDIATOR_LOG_LEVEL:-INFO}"
