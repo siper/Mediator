@@ -18,6 +18,5 @@ case "$PGID" in
 esac
 
 mkdir -p /config /downloads
-chown -R "$PUID:$PGID" /config /downloads
 
 exec su-exec "$PUID:$PGID" /usr/local/bin/mediator "$@"
