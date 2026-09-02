@@ -20,8 +20,8 @@ import (
 )
 
 type fakeAuthProvider struct {
-	loginURL  string
-	result    domain.OIDCCallbackResult
+	loginURL    string
+	result      domain.OIDCCallbackResult
 	callbackErr error
 	enabledFlag bool
 }
@@ -361,6 +361,24 @@ func TestAuthHandler_OIDCCallback_IdPErrorRedirectsToLogin(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Location"), "error=access_denied")
 }
 
+func TestAuthHandler_OIDCCallback_LoginErrorRedirectsToLogin(t *testing.T) {
+	h, _, _, _ := newAuthTestEnv(t)
+	h.oidc = &fakeAuthProvider{enabledFlag: true}
+
+	r := gin.New()
+	r.GET("/auth/oidc/callback", h.OIDCCallback)
+
+	req := httptest.NewRequest("GET", "/auth/oidc/callback?code=abc&state=csrf-secret", nil)
+	req.AddCookie(&http.Cookie{Name: "oidc_state", Value: "csrf-secret"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/login?error=login_failed", w.Header().Get("Location"))
+	assert.NotContains(t, w.Body.String(), "readonly")
+	assert.NotContains(t, w.Body.String(), "oidc is not configured")
+}
+
 func TestAuthHandler_OIDCLogin_RequiresState(t *testing.T) {
 	h, _, _, _ := newAuthTestEnv(t)
 	h.oidc = &fakeAuthProvider{enabledFlag: true}
@@ -439,4 +457,3 @@ func TestAuthHandler_OIDCCallback_RejectsMissingOrMismatchedState(t *testing.T) 
 		assert.Contains(t, w.Body.String(), domain.ErrOIDCStateMismatch.Error())
 	})
 }
-

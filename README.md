@@ -17,6 +17,10 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+Set `PUID` and `PGID` in `.env` to the host uid/gid that should own `/config`
+and `/downloads` (default `1000`). The entrypoint chowns those directories and
+drops privileges before starting the app.
+
 Open http://localhost:42800, register the first user (becomes admin), then in
 Settings add:
 

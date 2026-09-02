@@ -43,6 +43,12 @@ func main() {
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
+	for _, dir := range []string{cfg.ConfigDir, cfg.StagingDir, cfg.CoverDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Fatalf("failed to create dir %s: %v", dir, err)
+		}
+	}
+
 	db, err := sqlite.NewDB(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
@@ -72,12 +78,6 @@ func main() {
 	requestRepo := sqlite.NewSQLiteMediaRequestRepository(db)
 
 	txm := sqlite.NewTxManager(db)
-
-	for _, dir := range []string{cfg.ConfigDir, cfg.StagingDir, cfg.CoverDir} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			log.Fatalf("failed to create dir %s: %v", dir, err)
-		}
-	}
 	coverStore := covercache.NewFileCoverStore(cfg.CoverDir, "/covers")
 
 	providerBuilder := func(s domain.Source) (domain.MediaProvider, error) {
@@ -278,10 +278,10 @@ func main() {
 		GroupRepo:        groupRepo,
 		WebFS:            webDist,
 
-		RequestRepo:     requestRepo,
-		RequestSvc:      requestSvc,
-		RequestHandler:  reqH,
-		SettingRepo:     settingRepo,
+		RequestRepo:    requestRepo,
+		RequestSvc:     requestSvc,
+		RequestHandler: reqH,
+		SettingRepo:    settingRepo,
 
 		AuthMiddleware: authMW,
 		AuthHandler:    authH,
